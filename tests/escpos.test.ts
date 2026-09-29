@@ -82,3 +82,15 @@ describe("escpos bytes", () => {
     expect(bytes.includes(Buffer.from([0x1d, 0x56, 0x01]))).toBe(false);
   });
 });
+
+describe("logo image", () => {
+  it("emits a GS v 0 raster block with the right size and renders a placeholder in text", async () => {
+    const { logoImage } = await import("@/server/printing/logo");
+    const img = logoImage();
+    expect(img.width).toBe(384);
+    expect(Buffer.from(img.data, "base64").length).toBe(Math.ceil(img.width / 8) * img.height);
+    const bytes = buildEscpos({ lines: [{ t: "image", ...img }] }, { codepage: "cp737", columns: 48, cutter: false, drawerKick: false });
+    expect(bytes.includes(Buffer.from([0x1d, 0x76, 0x30, 0x00, 48, 0, img.height & 0xff, img.height >> 8]))).toBe(true);
+    expect(renderText({ lines: [{ t: "image", ...img }] }, 42)).toContain("[ΛΟΓΟΤΥΠΟ 384x");
+  });
+});

@@ -28,7 +28,7 @@ function Bars({ data, labelOf }: { data: { key: string; value: number; label?: s
     <div className="flex items-end gap-[3px] h-40 w-full overflow-hidden">
       {data.map((d) => (
         <div key={d.key} className="flex-1 min-w-0 flex flex-col items-center justify-end h-full group" title={`${labelOf ? labelOf(d.key) : d.key}: ${formatEuro(d.value)}`}>
-          <div className="w-full rounded-t bg-brand/80 group-hover:bg-brand transition-all" style={{ height: `${Math.max(2, (d.value / max) * 100)}%` }} />
+          <div className="w-full rounded-t bg-brand-light/80 group-hover:bg-brand-light transition-all" style={{ height: `${Math.max(2, (d.value / max) * 100)}%` }} />
         </div>
       ))}
     </div>
@@ -127,7 +127,7 @@ export function PartnersDashboard({
                   <span className="num">{formatEuro(v)}</span>
                 </div>
                 <div className="h-1.5 rounded bg-dark-3 mt-1">
-                  <div className="h-1.5 rounded bg-brand" style={{ width: `${totalMethods ? (v / totalMethods) * 100 : 0}%` }} />
+                  <div className="h-1.5 rounded bg-brand-light" style={{ width: `${totalMethods ? (v / totalMethods) * 100 : 0}%` }} />
                 </div>
               </div>
             ))}
@@ -167,7 +167,7 @@ export function PartnersDashboard({
             {s.byCategory30.map((c) => (
               <div key={c.category} className="mb-2">
                 <div className="flex justify-between text-sm"><span className="text-slate-300">{c.category}</span><span className="num">{formatEuro(c.grossCents)}</span></div>
-                <div className="h-1.5 rounded bg-dark-3 mt-1"><div className="h-1.5 rounded bg-brand" style={{ width: `${s.last30.grossCents ? (c.grossCents / s.last30.grossCents) * 100 : 0}%` }} /></div>
+                <div className="h-1.5 rounded bg-dark-3 mt-1"><div className="h-1.5 rounded bg-brand-light" style={{ width: `${s.last30.grossCents ? (c.grossCents / s.last30.grossCents) * 100 : 0}%` }} /></div>
               </div>
             ))}
             {!s.byCategory30.length && <div className="text-sm text-slate-500">Δεν υπάρχουν πωλήσεις</div>}

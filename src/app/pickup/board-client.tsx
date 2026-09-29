@@ -1,4 +1,5 @@
 "use client";
+import { Mark } from "@/components/brand";
 import { useNow } from "@/components/ops/use-now";
 import { firstName } from "@/components/qr/labels";
 import { usePublicLive } from "@/components/qr/live";
@@ -19,7 +20,8 @@ export function BoardClient({ venueName, rows }: { venueName: string; rows: Row[
   return (
     <div className="flex-1 min-h-screen flex flex-col bg-dark text-white select-none">
       <header className="flex items-center justify-between px-6 py-4 border-b border-dark-3">
-        <div className="flex items-baseline gap-3">
+        <div className="flex items-center gap-3">
+          <span className="rounded-2xl bg-cream px-3 py-1.5 flex items-center"><Mark height={34} /></span>
           <span className="text-2xl font-black tracking-tight text-brand-soft">{venueName}</span>
           <span className="text-lg text-slate-300 font-medium">Παραλαβές</span>
         </div>

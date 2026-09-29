@@ -8,18 +8,22 @@
   --color-ink-2: #4b5160;
   --color-ink-3: #8a8f9c;
   --color-line: #dcdcd6;
-  --color-brand: #0f766e;
-  --color-brand-2: #115e59;
-  --color-brand-soft: #d1f0eb;
+  --color-brand: #2f4a2c;
+  --color-brand-2: #24391f;
+  --color-brand-soft: #e4ebdc;
+  --color-brand-light: #9dbd8b;
+  --color-gold: #b08a3e;
+  --color-gold-soft: #f3e8d0;
+  --color-cream: #f8f7f2;
   --color-warn: #b45309;
   --color-warn-soft: #fdebd0;
   --color-danger: #b91c1c;
   --color-danger-soft: #fde2e2;
   --color-ok: #15803d;
   --color-ok-soft: #dcf5e3;
-  --color-dark: #0f172a;
-  --color-dark-2: #1e293b;
-  --color-dark-3: #334155;
+  --color-dark: #121a13;
+  --color-dark-2: #1b261d;
+  --color-dark-3: #2c3a2e;
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
   --radius-card: 14px;
 }

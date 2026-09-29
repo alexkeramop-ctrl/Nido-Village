@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 
-const PUBLIC = ["/login", "/partners/login", "/api/health", "/api/sync", "/api/public", "/api/assets", "/order", "/pickup", "/manifest.webmanifest"];
+const PUBLIC = ["/login", "/partners/login", "/api/health", "/api/sync", "/api/public", "/api/assets", "/order", "/pickup", "/brand", "/icons", "/manifest.webmanifest"];
 
 function secret() {
   return new TextEncoder().encode(process.env.NIDO_SECRET ?? "nido-village-dev-secret-change-me");
@@ -40,5 +40,5 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|icons/|.*\\.png$|.*\\.svg$).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.png|apple-icon.png|icons/|brand/|.*\\.(?:png|svg|webp|jpg|ico)$).*)"],
 };

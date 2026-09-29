@@ -1,4 +1,5 @@
 "use client";
+import { Mark } from "@/components/brand";
 import { unstable_rethrow } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Field, Modal, Money, useToast } from "@/components/ui";
@@ -173,10 +174,15 @@ export function OrderClient({ menu, venueName }: { menu: Menu; venueName: string
   return (
     <div className="flex-1 flex flex-col max-w-lg w-full mx-auto min-h-full">
       <div ref={stickyRef} className="sticky top-0 z-30 bg-surface">
-        <header className="bg-brand text-white px-4 pt-4 pb-3">
-          <div className="text-xs uppercase tracking-widest text-white/80 font-semibold">{venueName}</div>
-          <h1 className="text-2xl font-bold leading-tight mt-0.5">Παραγγελία για παραλαβή</h1>
-          <p className="text-sm text-white/90 mt-1">Πληρώνεις στο ταμείο όταν παραλάβεις.</p>
+        <header className="bg-cream px-4 pt-3 pb-3 border-b border-line">
+          <div className="flex items-center gap-3">
+            <Mark height={44} />
+            <div className="min-w-0">
+              <div className="text-[11px] uppercase tracking-widest text-ink-3 font-semibold truncate">{venueName}</div>
+              <h1 className="text-xl font-bold leading-tight text-brand">Παραγγελία για παραλαβή</h1>
+            </div>
+          </div>
+          <p className="text-xs text-ink-2 mt-2">Πληρώνεις στο ταμείο όταν παραλάβεις.</p>
         </header>
         {menu.length > 0 && (
           <nav aria-label="Κατηγορίες" className="bg-surface-2 border-b border-line">

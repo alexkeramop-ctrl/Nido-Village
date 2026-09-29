@@ -10,6 +10,7 @@ import { getFiscalProvider } from "@/server/fiscal/provider";
 import { enqueue, findReceiptStation } from "@/server/printing/queue";
 import { billTicket, receiptTicket, type BillLine, type VatBreakdown } from "@/server/printing/templates";
 import { getSettings } from "./settings";
+import { logoImage } from "@/server/printing/logo";
 
 type ItemWithMods = {
   qty: number;
@@ -122,6 +123,7 @@ export async function printBill(sessionId: number, employeeId: number) {
     totalCents: s.totals.totalCents,
     vat: s.totals.vat,
     sessionId: s.id,
+    logo: logoImage(),
   });
   await db.transaction(async (tx) => {
     await enqueue(tx, station.id, "bill", doc);
@@ -240,6 +242,7 @@ async function issueReceiptForSession(sessionId: number, employeeId: number) {
         totalCents: s.totals.totalCents,
         vat: s.totals.vat,
         sessionId,
+        logo: logoImage(),
         fiscal: { series: res.series, number: res.number, mark: res.mark, uid: res.uid, qrUrl: res.qrUrl, providerName: res.provider },
         payments: s.payments.map((p) => ({ method: p.method, amountCents: p.amountCents, posTransactionId: p.posTransactionId })),
       });

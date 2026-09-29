@@ -112,6 +112,17 @@ export function buildEscpos(doc: TicketDoc, opt: EscposOptions): Buffer {
         setAlign("left");
         break;
       }
+      case "image": {
+        // GS v 0: raster bitmap, 1 bit ανά pixel, γραμμές πλάτους ceil(width/8) bytes.
+        const bytesPerRow = Math.ceil(l.width / 8);
+        const data = Buffer.from(l.data, "base64");
+        if (data.length !== bytesPerRow * l.height) break;
+        setAlign("center");
+        b.push([GS, 0x76, 0x30, 0x00, bytesPerRow & 0xff, (bytesPerRow >> 8) & 0xff, l.height & 0xff, (l.height >> 8) & 0xff], data);
+        b.push([0x0a]);
+        setAlign("left");
+        break;
+      }
       case "cut":
         b.push([ESC, 0x64, 0x04]);
         if (opt.cutter) b.push([GS, 0x56, 0x01]); // partial cut

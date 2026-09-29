@@ -113,7 +113,7 @@ export function KdsScreen({ stations, stationId, tickets }: { stations: KdsStati
                         <button
                           type="button"
                           onClick={() => tapItem(it)}
-                          className={`w-full text-left px-3 py-2.5 touch transition active:bg-white/10 ${preparing ? "bg-brand/25" : ""} ${ready ? "opacity-50" : ""}`}
+                          className={`w-full text-left px-3 py-2.5 touch transition active:bg-white/10 ${preparing ? "bg-brand-light/25" : ""} ${ready ? "opacity-50" : ""}`}
                         >
                           <div className="flex items-start gap-2">
                             <span className={`text-xl font-black num shrink-0 ${ready ? "line-through" : ""}`}>{it.qty}×</span>

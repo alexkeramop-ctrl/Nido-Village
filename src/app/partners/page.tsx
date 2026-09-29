@@ -3,6 +3,7 @@ import { getPartnerSession } from "@/server/services/partners";
 import { computeSnapshot, getDailyHistory, getLatestSnapshot, type Snapshot } from "@/server/cloud/snapshot";
 import { PartnersDashboard } from "./dashboard";
 import { partnerLogoutAction } from "./actions";
+import { Mark } from "@/components/brand";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,7 @@ export default async function PartnersPage() {
     <main className="min-h-full flex-1 bg-dark text-white">
       <header className="sticky top-0 z-30 bg-dark-2 border-b border-dark-3">
         <div className="max-w-6xl mx-auto px-4 h-12 flex items-center gap-3">
-          <span className="font-bold text-brand">Nido</span>
+          <Mark height={30} />
           <span className="text-slate-200 font-semibold truncate">{snapshot.venueName}</span>
           <span className="ml-auto text-xs text-slate-400 hidden sm:inline">{partner.name}</span>
           <form action={partnerLogoutAction}>

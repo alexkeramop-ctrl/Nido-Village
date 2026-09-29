@@ -1,4 +1,5 @@
 "use client";
+import { Mark } from "@/components/brand";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Money } from "@/components/ui";
@@ -123,9 +124,14 @@ export function StatusClient({ order, token, venueName }: { order: PublicOrder; 
 
   return (
     <div className="flex-1 flex flex-col max-w-lg w-full mx-auto min-h-full">
-      <header className="bg-brand text-white px-4 pt-4 pb-3">
-        <div className="text-xs uppercase tracking-widest text-white/80 font-semibold">{venueName}</div>
-        <h1 className="text-xl font-bold leading-tight mt-0.5">Η παραγγελία σου</h1>
+      <header className="bg-cream px-4 pt-3 pb-3 border-b border-line">
+        <div className="flex items-center gap-3">
+          <Mark height={44} />
+          <div className="min-w-0">
+            <div className="text-[11px] uppercase tracking-widest text-ink-3 font-semibold truncate">{venueName}</div>
+            <h1 className="text-xl font-bold leading-tight mt-0.5">Η παραγγελία σου</h1>
+          </div>
+        </div>
       </header>
 
       <main className="flex-1 px-3 py-4 space-y-4 pb-10">

@@ -3,6 +3,7 @@ import { getDb, schema } from "@/db";
 import { emit } from "@/server/events";
 import { checkStationHealth, enqueue } from "@/server/printing/queue";
 import { testTicket } from "@/server/printing/templates";
+import { logoImage } from "@/server/printing/logo";
 import type { Codepage, PrintDriver, PrintJobStatus, StationKind } from "@/db/schema";
 
 export const STATION_KIND_LABEL: Record<StationKind, string> = { kitchen: "Κουζίνα", bar: "Μπαρ", receipt: "Ταμείο / Απόδειξη" };
@@ -54,7 +55,7 @@ export async function printTestPage(stationId: number) {
   const db = await getDb();
   const s = await db.query.printStations.findFirst({ where: eq(schema.printStations.id, stationId) });
   if (!s) throw new Error("Ο σταθμός δεν βρέθηκε");
-  const job = await enqueue(db, stationId, "test", testTicket(s.name, s.columns));
+  const job = await enqueue(db, stationId, "test", testTicket(s.name, s.columns, logoImage()));
   emit({ type: "print.changed" });
   return job;
 }

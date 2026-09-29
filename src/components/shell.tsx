@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import type { SessionUser } from "@/server/auth";
 import { logoutAction } from "@/app/login/actions";
+import { Mark } from "@/components/brand";
 
 const NAV: { href: string; label: string; roles: string[] }[] = [
   { href: "/pda", label: "PDA", roles: ["waiter", "cashier", "manager", "admin"] },
@@ -16,8 +17,8 @@ export function Shell({ user, children, active, dark = false, title }: { user: S
     <div className={`min-h-full flex-1 flex flex-col ${dark ? "bg-dark text-white" : ""}`}>
       <header className={`sticky top-0 z-40 ${dark ? "bg-dark-2 border-dark-3" : "bg-surface-2 border-line"} border-b`}>
         <div className="flex items-center gap-2 px-3 h-12">
-          <Link href="/" className="font-bold tracking-tight text-brand mr-2">
-            Nido
+          <Link href="/" className="mr-2 flex items-center" aria-label="Αρχική">
+            <Mark height={30} />
           </Link>
           {title && <span className={`font-semibold ${dark ? "text-slate-200" : "text-ink"}`}>{title}</span>}
           <nav className="flex gap-1 ml-auto overflow-x-auto">

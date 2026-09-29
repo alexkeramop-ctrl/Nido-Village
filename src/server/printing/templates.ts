@@ -2,6 +2,7 @@
  * Πρότυπα εισιτηρίων: κουζίνα, ακύρωση, λογαριασμός, απόδειξη (για όταν συνδεθεί πάροχος), δοκιμή.
  */
 import { Ticket, type TicketDoc } from "./ticket";
+import type { TicketImage } from "./logo";
 import { formatEuro } from "@/server/money";
 
 const ATHENS = "Europe/Athens";
@@ -112,10 +113,12 @@ export type BillInput = {
   totalCents: number;
   vat: VatBreakdown;
   sessionId: number;
+  logo?: TicketImage | null;
 };
 
 export function billTicket(i: BillInput): TicketDoc {
   const t = new Ticket();
+  if (i.logo) t.image(i.logo);
   t.title(i.venueName);
   t.center("ΛΟΓΑΡΙΑΣΜΟΣ ΤΡΑΠΕΖΙΟΥ", true);
   t.row(`Τραπέζι: ${i.tableName}`, fmtDateTime(i.time));
@@ -150,6 +153,7 @@ export type ReceiptInput = BillInput & {
 /** Απόδειξη λιανικής (11.1) – χρησιμοποιείται ΜΟΝΟ όταν ο πάροχος έχει επιστρέψει ΜΑΡΚ/UID. */
 export function receiptTicket(i: ReceiptInput): TicketDoc {
   const t = new Ticket();
+  if (i.logo) t.image(i.logo);
   t.title(i.venueName);
   t.center(i.venue.address);
   t.center(`ΑΦΜ ${i.venue.vatNumber} · ΔΟΥ ${i.venue.taxOffice}`);
@@ -187,8 +191,9 @@ export function receiptTicket(i: ReceiptInput): TicketDoc {
   return t.doc();
 }
 
-export function testTicket(stationName: string, columns: number): TicketDoc {
+export function testTicket(stationName: string, columns: number, logo?: TicketImage | null): TicketDoc {
   const t = new Ticket();
+  if (logo) t.image(logo);
   t.title("NIDO VILLAGE");
   t.center(`Δοκιμή εκτυπωτή: ${stationName}`, true);
   t.row("Ώρα", fmtDateTime(new Date()));

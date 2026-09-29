@@ -10,6 +10,7 @@ export type TicketLine =
   | { t: "hr"; char?: string }
   | { t: "feed"; n?: number }
   | { t: "qr"; data: string; size?: number }
+  | { t: "image"; width: number; height: number; data: string; label?: string }
   | { t: "cut" }
   | { t: "drawer" }
   | { t: "beep" };
@@ -42,6 +43,10 @@ export class Ticket {
   }
   qr(data: string, size = 6) {
     this.lines.push({ t: "qr", data, size });
+    return this;
+  }
+  image(img: { width: number; height: number; data: string; label?: string }) {
+    this.lines.push({ t: "image", ...img });
     return this;
   }
   cut() {
@@ -133,6 +138,9 @@ export function renderText(doc: TicketDoc, columns: number): string {
         break;
       case "qr":
         out.push(`[QR: ${l.data}]`);
+        break;
+      case "image":
+        out.push(pad(`[${l.label ?? "ΕΙΚΟΝΑ"} ${l.width}x${l.height}]`, columns, "center").replace(/\s+$/, ""));
         break;
       case "cut":
         out.push("~~~~~~~~ ✂ ~~~~~~~~");
