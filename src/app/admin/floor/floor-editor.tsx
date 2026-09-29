@@ -160,10 +160,6 @@ export function FloorEditor({ areas }: { areas: EditorArea[] }) {
         subtitle={HELP}
         actions={
           <>
-            {/* Πάντα στη ροή (αόρατο όταν δεν υπάρχουν αλλαγές) ώστε να μην μετακινείται ο χάρτης κατά το σύρσιμο. */}
-            <span className={`self-center ${dirty ? "" : "invisible"}`} aria-hidden={!dirty}>
-              <Badge tone="warn">Μη αποθηκευμένες αλλαγές</Badge>
-            </span>
             <button type="button" className="btn-secondary btn-sm" onClick={() => area && clearEdits(area.id)} disabled={!dirty || pending}>
               Επαναφορά
             </button>
@@ -211,7 +207,15 @@ export function FloorEditor({ areas }: { areas: EditorArea[] }) {
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px] items-start">
             <Section
               flush
-              title={area.name}
+              title={
+                <span className="inline-flex items-center gap-2">
+                  {area.name}
+                  {/* Πάντα στη ροή (αόρατο όταν δεν υπάρχουν αλλαγές) ώστε να μην μετακινείται ο χάρτης κατά το σύρσιμο. */}
+                  <span className={dirty ? "" : "invisible"} aria-hidden={!dirty}>
+                    <Badge tone="warn">Μη αποθηκευμένες αλλαγές</Badge>
+                  </span>
+                </span>
+              }
               actions={
                 <>
                   <button type="button" className="btn-secondary btn-sm" onClick={() => autoLayout(false)} disabled={pending}>

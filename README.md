@@ -118,6 +118,10 @@ tests/             vitest (τρέχουν σε PGlite στη μνήμη)
 |---|---|---|---|
 | ![Ταμείο](docs/screenshots/cashier-payment.png) | ![Διαχείριση](docs/screenshots/admin-overview.png) | ![Αναφορές](docs/screenshots/admin-reports.png) | ![Συνεταίροι](docs/screenshots/partners-dashboard.png) |
 
+| Παραγγελία QR (καλάθι) | Κατάσταση | Έτοιμη για παραλαβή | Οθόνη παραλαβών | Χάρτης χώρου |
+|---|---|---|---|---|
+| ![Καλάθι](docs/screenshots/order-cart.png) | ![Κατάσταση](docs/screenshots/order-status.png) | ![Έτοιμη](docs/screenshots/order-ready.png) | ![Παραλαβές](docs/screenshots/pickup-board.png) | ![Χάρτης](docs/screenshots/admin-floor.png) |
+
 ## End-to-end έλεγχος
 
 Με τρέχοντα server (και έναν χρήστη συνεταίρου, π.χ. μέσω `PARTNER_BOOTSTRAP_EMAIL`/`PARTNER_BOOTSTRAP_PASSWORD`):

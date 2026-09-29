@@ -167,6 +167,7 @@ export function FloorMap({ areaImage, tables, onTap, editable = false, onMove, s
         const dragging = t.id === draggingId;
         const wide = t.shape === "wide";
         const shapeCls = t.shape === "round" ? "rounded-full" : "rounded-[18%]";
+        const nameScale = t.name.length <= 3 ? 1 : Math.max(0.6, 3 / t.name.length);
         return (
           <button
             key={t.id}
@@ -181,7 +182,7 @@ export function FloorMap({ areaImage, tables, onTap, editable = false, onMove, s
             onPointerUp={editable ? onPointerEnd : undefined}
             onPointerCancel={editable ? onPointerEnd : undefined}
             onKeyDown={onKeyDown(t)}
-            className={`@container absolute flex flex-col items-center justify-center overflow-hidden border-2 px-1 py-0.5 leading-none shadow-md transition-[box-shadow,transform] ${shapeCls} ${TONE[t.tone]} ${
+            className={`@container absolute flex flex-col items-center justify-center overflow-hidden border-2 px-0.5 py-0.5 leading-none shadow-md transition-[box-shadow,transform] ${shapeCls} ${TONE[t.tone]} ${
               selected ? "z-20 ring-2 ring-brand ring-offset-2 ring-offset-white" : "z-10"
             } ${dragging ? "scale-110 shadow-xl cursor-grabbing" : editable ? "cursor-grab" : "cursor-pointer active:scale-95"}`}
             style={{
@@ -193,7 +194,8 @@ export function FloorMap({ areaImage, tables, onTap, editable = false, onMove, s
               touchAction: editable ? "none" : "manipulation",
             }}
           >
-            <span className="font-bold truncate max-w-full" style={{ fontSize: `clamp(11px, ${wide ? 17 : 34}cqw, 24px)` }}>
+            {/* Χωρίς αποσιωπητικά: μικρά ονόματα (Κ12) χωρούν στον κύκλο· τα πολύ μακριά σμικρύνονται και κόβονται στην άκρη. */}
+            <span className="font-bold whitespace-nowrap" style={{ fontSize: `clamp(10px, ${(wide ? 17 : 34) * nameScale}cqw, 24px)` }}>
               {t.name}
             </span>
             {t.label && (
