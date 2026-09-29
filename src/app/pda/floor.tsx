@@ -1,7 +1,11 @@
 "use client";
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { useState, useSyncExternalStore, useTransition } from "react";
 import { Badge, EmptyState, Field, Modal, Money, useToast } from "@/components/ui";
+import { FloorMap, isPlaced, type FloorMapImage, type FloorMapTable } from "@/components/floor-map";
+import { formatEuro } from "@/server/money";
+import type { TableShape } from "@/db/schema";
 import { openTableAction, openTakeawayAction } from "./actions";
 
 export type FloorSessionDto = {
@@ -15,13 +19,62 @@ export type FloorSessionDto = {
   minutesOpen: number;
 };
 
+export type FloorTableDto = {
+  id: number;
+  name: string;
+  seats: number;
+  posX: number | null;
+  posY: number | null;
+  shape: TableShape;
+  session: FloorSessionDto | null;
+};
+
 export type FloorAreaDto = {
   id: number;
   name: string;
-  tables: { id: number; name: string; seats: number; session: FloorSessionDto | null }[];
+  image: FloorMapImage;
+  tables: FloorTableDto[];
 };
 
 export type TakeawayDto = FloorSessionDto & { label: string; orderType: "takeaway" | "delivery" };
+
+/* --------------------------- Προτίμηση προβολής --------------------------- */
+
+type View = "map" | "list";
+const VIEW_KEY = "nido.pda.floorView";
+const VIEW_EVENT = "nido:floorView";
+
+function readView(): View {
+  try {
+    return window.localStorage.getItem(VIEW_KEY) === "list" ? "list" : "map";
+  } catch {
+    return "map";
+  }
+}
+function subscribeView(cb: () => void) {
+  window.addEventListener("storage", cb);
+  window.addEventListener(VIEW_EVENT, cb);
+  return () => {
+    window.removeEventListener("storage", cb);
+    window.removeEventListener(VIEW_EVENT, cb);
+  };
+}
+function writeView(v: View) {
+  try {
+    window.localStorage.setItem(VIEW_KEY, v);
+  } catch {
+    /* ιδιωτική περιήγηση κ.λπ. */
+  }
+  window.dispatchEvent(new Event(VIEW_EVENT));
+}
+/** Η προβολή (χάρτης/λίστα) από το localStorage· στον server πάντα «χάρτης». */
+function useFloorView(): View {
+  return useSyncExternalStore(subscribeView, readView, () => "map");
+}
+
+const ZOOMS = [1, 1.5, 2, 3];
+
+/* ------------------------------ Κάρτες λίστας ------------------------------ */
 
 function StatusChip({ status }: { status: "open" | "billed" }) {
   return status === "billed" ? <Badge tone="warn">Λογαριασμός</Badge> : <Badge tone="brand">Ανοιχτό</Badge>;
@@ -51,12 +104,34 @@ function OccupiedBody({ s, name, sub }: { s: FloorSessionDto; name: string; sub?
 
 const CARD = "card p-3 min-h-[108px] flex flex-col text-left touch transition active:scale-[0.98]";
 
+function ViewToggle({ value, onChange }: { value: View; onChange: (v: View) => void }) {
+  const opt = (v: View, label: string) => (
+    <button
+      type="button"
+      aria-pressed={value === v}
+      onClick={() => onChange(v)}
+      className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition touch ${value === v ? "bg-brand text-white" : "text-ink-2 hover:bg-surface-3"}`}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div role="group" aria-label="Προβολή" className="inline-flex rounded-xl border border-line bg-surface-2 p-0.5 shrink-0">
+      {opt("map", "Χάρτης")}
+      {opt("list", "Λίστα")}
+    </div>
+  );
+}
+
 export function FloorScreen({ areas, takeaway }: { areas: FloorAreaDto[]; takeaway: TakeawayDto[] }) {
+  const router = useRouter();
   const [areaId, setAreaId] = useState<number | null>(areas[0]?.id ?? null);
   const [pendingTable, setPendingTable] = useState<number | null>(null);
   const [pkgOpen, setPkgOpen] = useState(false);
+  const [zoom, setZoom] = useState(1);
   const [pending, start] = useTransition();
   const { toast, element } = useToast();
+  const view = useFloorView();
   const area = areas.find((a) => a.id === areaId) ?? areas[0];
 
   const openTable = (tableId: number) => {
@@ -68,12 +143,39 @@ export function FloorScreen({ areas, takeaway }: { areas: FloorAreaDto[]; takeaw
     });
   };
 
+  const placedTables = area ? area.tables.filter(isPlaced) : [];
+  const unplaced = area ? area.tables.filter((t) => !isPlaced(t)) : [];
+  const hasMap = placedTables.length > 0;
+  const showMap = hasMap && view === "map";
+  const occupied = area ? area.tables.filter((t) => t.session).length : 0;
+
+  const markers: FloorMapTable[] = placedTables.map((t) => ({
+    id: t.id,
+    name: t.name,
+    seats: t.seats,
+    posX: t.posX,
+    posY: t.posY,
+    shape: t.shape,
+    tone: t.session ? (t.session.status === "billed" ? "billed" : "open") : "free",
+    label: pendingTable === t.id ? "Άνοιγμα…" : t.session ? `${t.session.minutesOpen}′` : `${t.seats} θέσ.`,
+    sub: t.session ? formatEuro(t.session.totalCents) : undefined,
+  }));
+
+  const tapTable = (id: number) => {
+    const t = area?.tables.find((x) => x.id === id);
+    if (!t) return;
+    if (t.session) router.push(`/pda/s/${t.session.id}`);
+    else if (!pending) openTable(t.id);
+  };
+
+  const zoomStep = (dir: 1 | -1) => setZoom((z) => ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, ZOOMS.indexOf(z) + dir))]);
+
   return (
     <main className="flex-1 p-3 sm:p-4 space-y-4 max-w-7xl w-full mx-auto">
       {areas.length > 1 && (
         <div className="flex gap-2 overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0 pb-1 touch">
           {areas.map((a) => {
-            const occupied = a.tables.filter((t) => t.session).length;
+            const n = a.tables.filter((t) => t.session).length;
             const active = area?.id === a.id;
             return (
               <button
@@ -86,7 +188,7 @@ export function FloorScreen({ areas, takeaway }: { areas: FloorAreaDto[]; takeaw
               >
                 {a.name}
                 <span className={`ml-1.5 num ${active ? "text-white/80" : "text-ink-3"}`}>
-                  {occupied}/{a.tables.length}
+                  {n}/{a.tables.length}
                 </span>
               </button>
             );
@@ -98,30 +200,68 @@ export function FloorScreen({ areas, takeaway }: { areas: FloorAreaDto[]; takeaw
         <EmptyState title="Δεν υπάρχουν τραπέζια" hint="Πρόσθεσε χώρους και τραπέζια από τη Διαχείριση." />
       ) : (
         <section>
-          {areas.length === 1 && <h2 className="font-semibold text-ink-2 mb-2">{area.name}</h2>}
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-            {area.tables.map((t) =>
-              t.session ? (
-                <Link key={t.id} href={`/pda/s/${t.session.id}`} className={`${CARD} ${t.session.status === "billed" ? "border-warn bg-warn-soft/40" : "border-brand bg-brand-soft/40"}`}>
-                  <OccupiedBody s={t.session} name={t.name} />
-                </Link>
-              ) : (
-                <button
-                  key={t.id}
-                  type="button"
-                  disabled={pending}
-                  onClick={() => openTable(t.id)}
-                  className={`${CARD} hover:border-brand/60 ${pendingTable === t.id ? "opacity-60" : ""}`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="text-xl font-bold leading-tight">{t.name}</span>
-                    <span className="text-xs text-ink-3 num">{t.seats} θέσ.</span>
-                  </div>
-                  <div className="mt-auto pt-2 text-sm text-ink-3">{pendingTable === t.id ? "Άνοιγμα…" : "Ελεύθερο"}</div>
-                </button>
-              ),
+          <div className="flex items-center justify-between gap-2 mb-2">
+            {areas.length === 1 ? (
+              <h2 className="font-semibold text-ink-2">{area.name}</h2>
+            ) : (
+              <span className="text-sm text-ink-3 num">
+                {occupied}/{area.tables.length} κατειλημμένα
+              </span>
             )}
+            {hasMap && <ViewToggle value={view} onChange={writeView} />}
           </div>
+
+          {showMap ? (
+            <div data-floor-view="map">
+              <div className="-mx-3 px-3 sm:mx-0 sm:px-0 overflow-x-auto overflow-y-hidden">
+                <div style={{ width: `${zoom * 100}%` }} className="min-w-full">
+                  <FloorMap areaImage={area.image} tables={markers} onTap={tapTable} maxWidth={900 * zoom} />
+                </div>
+              </div>
+              <div className="flex items-start justify-between gap-3 mt-2">
+                <p className="text-xs text-ink-3 min-w-0">
+                  {unplaced.length > 0 && (
+                    <>
+                      Χωρίς θέση: {unplaced.map((t) => t.name).join(", ")} <span className="text-ink-3/70">(στη λίστα)</span>
+                    </>
+                  )}
+                </p>
+                <div className="inline-flex items-center gap-1 shrink-0 touch" aria-label="Μεγέθυνση χάρτη">
+                  <button type="button" className="btn-secondary btn-sm px-3" onClick={() => zoomStep(-1)} disabled={zoom === ZOOMS[0]} aria-label="Σμίκρυνση">
+                    −
+                  </button>
+                  <span className="text-xs text-ink-3 num w-8 text-center">{zoom}×</span>
+                  <button type="button" className="btn-secondary btn-sm px-3" onClick={() => zoomStep(1)} disabled={zoom === ZOOMS[ZOOMS.length - 1]} aria-label="Μεγέθυνση">
+                    +
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div data-floor-view="list" className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+              {area.tables.map((t) =>
+                t.session ? (
+                  <Link key={t.id} href={`/pda/s/${t.session.id}`} className={`${CARD} ${t.session.status === "billed" ? "border-warn bg-warn-soft/40" : "border-brand bg-brand-soft/40"}`}>
+                    <OccupiedBody s={t.session} name={t.name} />
+                  </Link>
+                ) : (
+                  <button
+                    key={t.id}
+                    type="button"
+                    disabled={pending}
+                    onClick={() => openTable(t.id)}
+                    className={`${CARD} hover:border-brand/60 ${pendingTable === t.id ? "opacity-60" : ""}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-xl font-bold leading-tight">{t.name}</span>
+                      <span className="text-xs text-ink-3 num">{t.seats} θέσ.</span>
+                    </div>
+                    <div className="mt-auto pt-2 text-sm text-ink-3">{pendingTable === t.id ? "Άνοιγμα…" : "Ελεύθερο"}</div>
+                  </button>
+                ),
+              )}
+            </div>
+          )}
         </section>
       )}
 

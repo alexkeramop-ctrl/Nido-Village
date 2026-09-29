@@ -4,6 +4,7 @@ import { requireRole } from "@/server/auth";
 import { run, type ActionResult } from "@/server/action";
 import type { EmployeeRole, PaymentMethod } from "@/db/schema";
 import { addPayment, applyDiscount, closeCashSession, openCashSession, printBill } from "@/server/services/billing";
+import { markPickedUp } from "@/server/services/public-order";
 
 const ROLES: EmployeeRole[] = ["cashier", "manager", "admin"];
 
@@ -69,5 +70,17 @@ export async function addPaymentAction(
     const res = await addPayment(sessionId, { method: input.method, amountCents: input.amountCents, tenderedCents: input.tenderedCents }, user.id);
     revalidate(sessionId);
     return { closed: res.closed, changeCents: res.changeCents, paymentId: res.payment.id };
+  });
+}
+
+/** Παραγγελία QR: ο πελάτης παρέλαβε από το ταμείο. */
+export async function markPickedUpAction(sessionId: number): Promise<ActionResult> {
+  return run(async () => {
+    await requireRole(...ROLES);
+    if (!Number.isInteger(sessionId) || sessionId <= 0) throw new Error("Μη έγκυρη παραγγελία");
+    await markPickedUp(sessionId);
+    revalidate(sessionId);
+    revalidatePath("/admin/qr");
+    return undefined;
   });
 }

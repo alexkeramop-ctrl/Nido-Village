@@ -1,11 +1,11 @@
 "use client";
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import type { OrderType, PaymentMethod, SessionStatus } from "@/db/schema";
+import type { OrderType, PaymentMethod, SessionSource, SessionStatus } from "@/db/schema";
 import { Badge, Field, Modal, Money, Numpad, useToast } from "@/components/ui";
 import { parseEuroToCents } from "@/server/money";
 import { ORDER_TYPE_TITLE, PAYMENT_METHOD_LABEL, SESSION_STATUS_LABEL, SESSION_STATUS_TONE, fmtDateTime, fmtTime } from "@/components/ops/labels";
-import { closeCashShiftAction, openCashShiftAction } from "./actions";
+import { closeCashShiftAction, markPickedUpAction, openCashShiftAction } from "./actions";
 
 export type CashierSessionDto = {
   id: number;
@@ -16,6 +16,12 @@ export type CashierSessionDto = {
   openedAt: string;
   minutesOpen: number;
   itemCount: number;
+  /** "qr": παραγγελία πελάτη από QR (take away) — δείχνουμε κωδικό παραλαβής και όνομα. */
+  source: SessionSource;
+  pickupCode: string | null;
+  customerName: string | null;
+  readyAt: string | null;
+  pickedUpAt: string | null;
   totals: { subtotalCents: number; discountCents: number; totalCents: number; paidCents: number; dueCents: number };
 };
 
@@ -64,38 +70,54 @@ export function CashierScreen({ sessions, shift, recent }: { sessions: CashierSe
             <div className="card p-8 text-center text-ink-3">Δεν υπάρχουν ανοιχτά τραπέζια ή πακέτα.</div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-              {sessions.map((s) => (
-                <Link
-                  key={s.id}
-                  href={`/cashier/s/${s.id}`}
-                  className={`card p-3 flex flex-col gap-2 touch transition active:scale-[0.98] ${s.status === "billed" ? "border-warn" : ""}`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="text-xl font-bold leading-tight truncate">{s.displayName}</div>
-                      <div className="text-xs text-ink-3 truncate">
-                        {ORDER_TYPE_TITLE[s.orderType]} · {s.waiter} · <span className="num">{s.minutesOpen}′</span> ·{" "}
-                        <span className="num">{s.itemCount}</span> είδη
+              {sessions.map((s) => {
+                const qr = s.source === "qr";
+                const qrReady = qr && !!s.readyAt && !s.pickedUpAt;
+                return (
+                  <div key={s.id} className="relative">
+                    <Link
+                      href={`/cashier/s/${s.id}`}
+                      className={`card p-3 flex flex-col gap-2 touch transition active:scale-[0.98] ${s.status === "billed" ? "border-warn" : qrReady ? "border-ok" : ""} ${
+                        qr && !s.pickedUpAt ? "pb-14" : ""
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="text-xl font-bold leading-tight truncate">{s.displayName}</div>
+                          <div className="text-xs text-ink-3 truncate">
+                            {ORDER_TYPE_TITLE[s.orderType]} · {s.waiter} · <span className="num">{s.minutesOpen}′</span> ·{" "}
+                            <span className="num">{s.itemCount}</span> είδη
+                          </div>
+                        </div>
+                        <Badge tone={SESSION_STATUS_TONE[s.status]}>{SESSION_STATUS_LABEL[s.status]}</Badge>
                       </div>
-                    </div>
-                    <Badge tone={SESSION_STATUS_TONE[s.status]}>{SESSION_STATUS_LABEL[s.status]}</Badge>
+                      {qr && (
+                        <div className="flex flex-wrap items-center gap-1.5 text-sm">
+                          <Badge tone="brand">QR #{s.pickupCode ?? s.id}</Badge>
+                          {s.customerName && <span className="text-ink-2 truncate">{s.customerName}</span>}
+                          {qrReady && <Badge tone="ok">Έτοιμη</Badge>}
+                          {s.pickedUpAt && <Badge>Παραδόθηκε {fmtTime(s.pickedUpAt)}</Badge>}
+                        </div>
+                      )}
+                      <div className="grid grid-cols-3 gap-2 text-sm">
+                        <div>
+                          <div className="text-[11px] uppercase tracking-wide text-ink-3">Σύνολο</div>
+                          <Money cents={s.totals.totalCents} className="font-semibold" />
+                        </div>
+                        <div>
+                          <div className="text-[11px] uppercase tracking-wide text-ink-3">Πληρωμένα</div>
+                          <Money cents={s.totals.paidCents} className={s.totals.paidCents > 0 ? "text-ok font-semibold" : "text-ink-3"} />
+                        </div>
+                        <div>
+                          <div className="text-[11px] uppercase tracking-wide text-ink-3">Υπόλοιπο</div>
+                          <Money cents={s.totals.dueCents} className="font-bold text-danger" />
+                        </div>
+                      </div>
+                    </Link>
+                    {qr && !s.pickedUpAt && <PickedUpButton sessionId={s.id} code={s.pickupCode ?? String(s.id)} />}
                   </div>
-                  <div className="grid grid-cols-3 gap-2 text-sm">
-                    <div>
-                      <div className="text-[11px] uppercase tracking-wide text-ink-3">Σύνολο</div>
-                      <Money cents={s.totals.totalCents} className="font-semibold" />
-                    </div>
-                    <div>
-                      <div className="text-[11px] uppercase tracking-wide text-ink-3">Πληρωμένα</div>
-                      <Money cents={s.totals.paidCents} className={s.totals.paidCents > 0 ? "text-ok font-semibold" : "text-ink-3"} />
-                    </div>
-                    <div>
-                      <div className="text-[11px] uppercase tracking-wide text-ink-3">Υπόλοιπο</div>
-                      <Money cents={s.totals.dueCents} className="font-bold text-danger" />
-                    </div>
-                  </div>
-                </Link>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>
@@ -126,6 +148,28 @@ export function CashierScreen({ sessions, shift, recent }: { sessions: CashierSe
         </aside>
       </div>
     </main>
+  );
+}
+
+/* ---------------------------- Παραγγελίες QR ---------------------------- */
+
+/** «Παραδόθηκε» για παραγγελίες QR: εκτός του Link της κάρτας ώστε το πάτημα να μην ανοίγει τον λογαριασμό. */
+function PickedUpButton({ sessionId, code }: { sessionId: number; code: string }) {
+  const { toast, element } = useToast();
+  const [pending, start] = useTransition();
+  const click = () =>
+    start(async () => {
+      const r = await markPickedUpAction(sessionId);
+      if (!r.ok) return toast(r.error, "danger");
+      toast(`Η #${code} παραδόθηκε`);
+    });
+  return (
+    <>
+      <button type="button" className="btn-secondary btn-sm absolute bottom-3 right-3" disabled={pending} onClick={click} aria-label={`Παραδόθηκε η παραγγελία #${code}`}>
+        {pending ? "..." : "Παραδόθηκε"}
+      </button>
+      {element}
+    </>
   );
 }
 

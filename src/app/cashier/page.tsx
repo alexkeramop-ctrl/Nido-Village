@@ -25,6 +25,11 @@ export default async function CashierPage() {
           openedAt: s.openedAt.toISOString(),
           minutesOpen: minutesSince(s.openedAt),
           itemCount: s.itemCount,
+          source: s.source,
+          pickupCode: s.pickupCode,
+          customerName: s.customerName,
+          readyAt: s.readyAt?.toISOString() ?? null,
+          pickedUpAt: s.pickedUpAt?.toISOString() ?? null,
           totals: {
             subtotalCents: s.totals.subtotalCents,
             discountCents: s.totals.discountCents,
