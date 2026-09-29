@@ -1,7 +1,7 @@
 # Nido Village — Παραγγελιοληψία, PDA & Αποθήκη
 ## Αρχιτεκτονική, νομικό πλαίσιο και σχέδιο υλοποίησης
 
-Έκδοση 0.1 · 29 Σεπτεμβρίου 2026 · Κατάσταση: πρόταση προς απόφαση
+Έκδοση 0.2 · 29 Σεπτεμβρίου 2026 · Κατάσταση: η Φάση 1 υλοποιήθηκε (βλ. README). Η ενότητα 3 ενημερώθηκε ώστε να περιγράφει αυτό που χτίστηκε.
 
 ---
 
@@ -115,6 +115,8 @@ Epsilon Net, SoftOne / Entersoft (ecos, ENTERSOFTONE eInvoicing), Impact (einvoi
 
 ## 3. Αρχιτεκτονική συστήματος
 
+Η υλοποίηση της Φάσης 1 ακολουθεί **local-first** σχέδιο: όλο το λειτουργικό σύστημα τρέχει σε ένα box στο κατάστημα, και ένα δεύτερο αντίγραφο της ίδιας εφαρμογής στο cloud δέχεται στατιστικά και τα δείχνει στους συνεταίρους.
+
 ```
 ┌──────────────────────────── ΚΑΤΑΣΤΗΜΑ ────────────────────────────┐
 │                                                                    │
@@ -124,33 +126,31 @@ Epsilon Net, SoftOne / Entersoft (ecos, ENTERSOFTONE eInvoicing), Impact (einvoi
 │        └────────── WiFi / LAN (VLAN "nido-ops") ─────────────┘     │
 │                            │                                       │
 │                    ┌───────┴────────┐                              │
-│                    │   NIDO HUB     │  mini PC / Raspberry Pi 5    │
-│                    │  (Node.js)     │  + UPS                       │
-│                    │ • print agent  │──► Εκτυπωτές ESC/POS (LAN)   │
-│                    │ • fiscal relay │──► Πάροχος ΥΠΑΗΕΣ (HTTPS)    │
-│                    │ • POS bridge   │──► Τερματικά POS             │
-│                    │ • offline queue│                              │
-│                    └───────┬────────┘                              │
-│                            │  Router με 4G backup                  │
-└────────────────────────────┼───────────────────────────────────────┘
-                             │ HTTPS
-┌────────────────────────────┴───────────────────────────────────────┐
-│                            CLOUD                                    │
-│  Supabase (eu-west-1)                 Vercel                        │
-│  • Postgres + RLS                     • Next.js back-office         │
-│  • Auth (PIN ανά υπάλληλο)            • PWA (PDA/ταμείο/KDS)        │
-│  • Realtime (τραπέζια, KDS, print)    • Owner dashboard             │
-│  • Edge Functions (μυστικά παρόχου)                                 │
-│  • Storage (λογότυπα, φωτο πιάτων)                                  │
+│                    │   NIDO BOX     │  mini PC / Raspberry Pi 5    │
+│                    │  Next.js app   │  + UPS, Docker               │
+│                    │ • PostgreSQL   │                              │
+│                    │ • print worker │──► Εκτυπωτές ESC/POS (LAN)   │
+│                    │ • SSE realtime │                              │
+│                    │ • fiscal relay │──► Πάροχος ΥΠΑΗΕΣ (Φάση 2)   │
+│                    │ • POS bridge   │──► Τερματικά POS (Φάση 2)    │
+│                    │ • cloud publish│──┐                           │
+│                    └────────────────┘  │  Router με 4G backup      │
+└────────────────────────────────────────┼───────────────────────────┘
+                                         │ HTTPS POST /api/sync (κάθε 60")
+┌────────────────────────────────────────┴───────────────────────────┐
+│                            CLOUD (Vercel + Supabase)                │
+│  Ίδια εφαρμογή σε NIDO_MODE=cloud                                   │
+│  • /api/sync δέχεται snapshots            • /partners dashboard     │
+│  • ιστορικό ημερών                        • login συνεταίρων        │
 └─────────────────────────────────────────────────────────────────────┘
-                             │
-              Πάροχος ΥΠΑΗΕΣ ──► ΑΑΔΕ myDATA
 ```
+
+Γιατί έτσι και όχι «όλα στο cloud»: η κουζίνα και οι εκτυπώσεις δεν επιτρέπεται να εξαρτώνται από το internet. Το cloud παίρνει μόνο ό,τι χρειάζονται οι συνεταίροι (αριθμούς), με μονόδρομη αποστολή, άρα δεν υπάρχουν συγκρούσεις δεδομένων.
 
 ### 3.1 Αρχές σχεδιασμού
 
 - **Η κουζίνα δεν σταματά ποτέ.** Η παραγγελία γράφεται πρώτα τοπικά (IndexedDB στη συσκευή + ουρά στο Hub) και συγχρονίζεται στο cloud όταν υπάρχει σύνδεση. Οι εκτυπώσεις κουζίνας δουλεύουν 100% τοπικά μέσω Hub.
-- **Cloud ως πηγή αλήθειας, Hub ως εκτελεστής.** Στη Φάση 1 το Hub είναι «χαζό»: τυπώνει, μεταφέρει, κρατά ουρά. Δεν κρατά επιχειρησιακή λογική. Αυτό μειώνει δραστικά την πολυπλοκότητα.
+- **Το box του καταστήματος είναι η πηγή αλήθειας.** Το cloud παίρνει μόνο στατιστικά (snapshot), μονόδρομα. Αν χαθεί το internet, οι συνεταίροι βλέπουν το τελευταίο snapshot με ένδειξη «δεν έχει στείλει πρόσφατα».
 - **4G backup router από την πρώτη μέρα.** Κοστίζει λιγότερο από ένα χαμένο Σάββατο.
 - **Audit σε όλα.** Κάθε ακύρωση, έκπτωση, void, αλλαγή τιμής καταγράφεται με χρήστη, ώρα, αιτιολογία. Η ΑΑΔΕ ελέγχει ακριβώς αυτά.
 - **Multi-tenant από την αρχή** (venue_id σε κάθε πίνακα), ακόμη κι αν σήμερα είναι ένα κατάστημα. Κοστίζει ελάχιστα τώρα, γλιτώνει rewrite αν γίνει προϊόν.
@@ -159,10 +159,10 @@ Epsilon Net, SoftOne / Entersoft (ecos, ENTERSOFTONE eInvoicing), Impact (einvoi
 
 | Επίπεδο | Επιλογή | Γιατί |
 |---------|---------|-------|
-| Frontend | Next.js 15, React, TypeScript, Tailwind, PWA (installable), Dexie για offline ουρά | Ένα codebase για PDA, ταμείο, KDS, back-office. Τρέχει σε φθηνά Android. |
-| Backend | Supabase: Postgres + RLS, Auth, Realtime, Edge Functions, Storage | Ήδη έχεις οργανισμό Supabase (eu-west-1). Realtime λύνει KDS/τραπέζια χωρίς δικό μας WebSocket server. |
-| Hub | Node.js/TypeScript service σε Docker, systemd, auto-update | Οι browsers δεν ανοίγουν TCP sockets προς εκτυπωτές. Χρειάζεται τοπικός agent. |
-| Hosting | Vercel (ήδη έχεις team) | Zero-ops deploys, preview URLs για δοκιμές. |
+| Frontend | Next.js 16, React 19, TypeScript, Tailwind v4, PWA (installable) | Ένα codebase για PDA, ταμείο, KDS, back-office, partners. Τρέχει σε φθηνά Android. |
+| Backend | Next.js server (server actions, SSE) + PostgreSQL μέσω Drizzle ORM. Τοπικά PGlite χωρίς εγκατάσταση. | Ένα process στο box: realtime, ουρά εκτύπωσης, publisher. Χωρίς εξωτερικές εξαρτήσεις για να δουλεύει offline. |
+| Cloud | Ίδια εφαρμογή σε Vercel + Supabase Postgres (`NIDO_MODE=cloud`) | Ήδη έχεις και τα δύο. Μόνο dashboard και sync endpoint. |
+| Εκτυπώσεις | Worker μέσα στον server: ESC/POS σε raw TCP 9100, ελληνικές κωδικοσελίδες, QR | Οι browsers δεν ανοίγουν TCP sockets προς εκτυπωτές. |
 | Παρατηρησιμότητα | Sentry, uptime checks, health του Hub και κάθε εκτυπωτή στο dashboard | Να ξέρεις ότι έπεσε ο εκτυπωτής της κουζίνας πριν το μάθεις από πελάτη. |
 
 ### 3.3 Βασικό μοντέλο δεδομένων (πίνακες)
