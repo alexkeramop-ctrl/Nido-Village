@@ -23,7 +23,7 @@ const PRINT_CSS = `
   html, body { height: 100vh; overflow: hidden; background: #fff; }
   body * { visibility: hidden; }
   #qr-tent, #qr-tent * { visibility: visible; }
-  #qr-tent { position: fixed; inset: 0; margin: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 0; box-shadow: none; border-radius: 0; background: #fff; }
+  #qr-tent { position: fixed; inset: 0; margin: 0; width: 100%; max-width: none; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 0; box-shadow: none; border-radius: 0; background: #fff; }
 }
 `;
 
