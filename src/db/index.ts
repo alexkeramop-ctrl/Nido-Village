@@ -24,7 +24,13 @@ async function connect(): Promise<Db> {
     const { Pool } = await import("pg");
     const { drizzle } = await import("drizzle-orm/node-postgres");
     const { migrate } = await import("drizzle-orm/node-postgres/migrator");
-    const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 10 });
+    // PG_SSL=require: TLS με επαλήθευση πιστοποιητικού. PG_SSL=no-verify: TLS χωρίς επαλήθευση (π.χ. pooler χωρίς CA).
+    const sslMode = process.env.PG_SSL ?? (process.env.DATABASE_URL.includes("supabase") ? "no-verify" : "off");
+    const pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      max: Number(process.env.PG_POOL_MAX ?? 5),
+      ssl: sslMode === "off" ? undefined : { rejectUnauthorized: sslMode !== "no-verify" },
+    });
     const db = drizzle(pool, { schema, casing: "snake_case" });
     await migrate(db, { migrationsFolder });
     return db as unknown as Db;
