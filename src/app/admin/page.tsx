@@ -2,9 +2,12 @@ import Link from "next/link";
 import { Badge, Money, Stat } from "@/components/ui";
 import { LiveRefresh } from "@/components/live";
 import { InfoBox, PageHeader, Section } from "@/components/admin/common";
-import { fmtDateTime } from "@/components/admin/format";
+import { fmtDateTime, fmtIsoDate } from "@/components/admin/format";
+import { WEEKDAYS_SHORT, weekdayMon } from "@/components/admin/events/dates";
+import { EVENT_STATUS_TONE, EVENT_TYPE_DOT } from "@/components/admin/events/meta";
 import { requirePageUser } from "@/server/page-auth";
 import { publisherStatus } from "@/server/cloud/publisher";
+import { EVENT_STATUS_LABEL, EVENT_TYPE_LABEL, upcomingEvents } from "@/server/services/events";
 import { listIngredients } from "@/server/services/inventory";
 import { listStations } from "@/server/services/printers";
 import { todayDashboard } from "@/server/services/reports";
@@ -22,7 +25,7 @@ const QUICK_LINKS = [
 
 export default async function AdminOverviewPage() {
   const user = await requirePageUser("manager", "admin");
-  const [dash, ingredients, stations] = await Promise.all([todayDashboard(), listIngredients(), listStations()]);
+  const [dash, ingredients, stations, events] = await Promise.all([todayDashboard(), listIngredients(), listStations(), upcomingEvents(14, 5)]);
   const cloud = publisherStatus();
   const low = ingredients.filter((i) => i.low);
   const s = dash.summary;
@@ -87,6 +90,36 @@ export default async function AdminOverviewPage() {
           </div>
         </Section>
       </div>
+
+      <Section title="Επόμενες εκδηλώσεις" actions={<Link href="/admin/events" className="btn-ghost btn-sm">Ημερολόγιο</Link>} flush>
+        {events.length ? (
+          <ul className="divide-y divide-line" data-testid="overview-events">
+            {events.map((ev) => (
+              <li key={ev.id} className="flex items-center gap-3 px-4 py-3">
+                <div className="w-28 shrink-0">
+                  <div className="font-semibold num text-sm">
+                    {WEEKDAYS_SHORT[weekdayMon(ev.date)]} {fmtIsoDate(ev.date)}
+                  </div>
+                  <div className="text-xs text-ink-3 num">
+                    {ev.startTime}–{ev.endTime}
+                  </div>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium truncate">{ev.title}</div>
+                  <div className="text-xs text-ink-3 truncate">
+                    <span className={`inline-block h-2 w-2 rounded-full mr-1 align-middle ${EVENT_TYPE_DOT[ev.type]}`} />
+                    {EVENT_TYPE_LABEL[ev.type]} · <span className="num">{ev.guests} άτομα</span>
+                    {ev.area && ` · ${ev.area.name}`}
+                  </div>
+                </div>
+                <Badge tone={EVENT_STATUS_TONE[ev.status]}>{EVENT_STATUS_LABEL[ev.status]}</Badge>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="p-4 text-sm text-ink-3">Δεν υπάρχουν εκδηλώσεις τις επόμενες 14 ημέρες.</div>
+        )}
+      </Section>
 
       {low.length > 0 && (
         <Section title="Είδη κάτω από το ελάχιστο απόθεμα" actions={<Link href="/admin/inventory" className="btn-ghost btn-sm">Αποθήκη</Link>} flush>

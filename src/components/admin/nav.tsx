@@ -11,6 +11,7 @@ const LINKS: { href: string; label: string; adminOnly?: boolean }[] = [
   { href: "/admin/staff", label: "Προσωπικό", adminOnly: true },
   { href: "/admin/printers", label: "Εκτυπωτές" },
   { href: "/admin/qr", label: "QR & Παραλαβές" },
+  { href: "/admin/events", label: "Εκδηλώσεις" },
   { href: "/admin/inventory", label: "Αποθήκη" },
   { href: "/admin/recipes", label: "Συνταγές" },
   { href: "/admin/reports", label: "Αναφορές" },
