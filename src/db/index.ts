@@ -38,7 +38,12 @@ async function connect(): Promise<Db> {
   const { PGlite } = await import("@electric-sql/pglite");
   const { drizzle } = await import("drizzle-orm/pglite");
   const { migrate } = await import("drizzle-orm/pglite/migrator");
-  const dir = process.env.PGLITE_DIR ?? path.join(process.cwd(), ".data", "pglite");
+  // Σε serverless (Vercel) ο δίσκος είναι μόνο για ανάγνωση: χωρίς DATABASE_URL, βάση στη μνήμη (demo).
+  const serverless = !!process.env.VERCEL;
+  const dir = process.env.PGLITE_DIR ?? (serverless ? "memory" : path.join(process.cwd(), ".data", "pglite"));
+  if (serverless && dir === "memory") {
+    console.warn("[nido] Δεν υπάρχει DATABASE_URL: χρήση προσωρινής βάσης στη μνήμη (τα δεδομένα μηδενίζονται σε κάθε νέα εκκίνηση).");
+  }
   if (dir !== "memory") fs.mkdirSync(dir, { recursive: true });
   const client = dir === "memory" ? new PGlite() : new PGlite(dir);
   const db = drizzle(client, { schema, casing: "snake_case" });

@@ -53,8 +53,11 @@ describe("partner users", () => {
     const ok = await partnerLogin("k@example.com", "secret123");
     expect(ok?.name).toBe("Κώστας");
     const list = await listPartnerUsers();
-    expect(list).toHaveLength(1);
-    expect("passwordHash" in list[0]).toBe(false);
+    const created = list.find((p) => p.email === "k@example.com")!;
+    expect(created).toBeDefined();
+    expect("passwordHash" in created).toBe(false);
+    // ο demo συνεταίρος του seed
+    expect(await partnerLogin("partner@nido.demo", "nido-demo-2026")).not.toBeNull();
     await upsertPartnerUser({ id: u.id, name: "Κώστας", email: u.email, active: false });
     expect(await partnerLogin("k@example.com", "secret123")).toBeNull();
   });

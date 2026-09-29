@@ -294,6 +294,8 @@ export async function seedDemo(db: Db): Promise<boolean> {
     key: "venue",
     value: { venueName: "Nido Village", vatNumber: "", taxOffice: "", address: "", phone: "", courses: 3 },
   });
+  // Demo χρήστης για το online dashboard συνεταίρων (/partners).
+  await db.insert(schema.partnerUsers).values({ name: "Συνεταίρος (demo)", email: "partner@nido.demo", passwordHash: hashPin("nido-demo-2026") });
   void cashier;
   return true;
 }
