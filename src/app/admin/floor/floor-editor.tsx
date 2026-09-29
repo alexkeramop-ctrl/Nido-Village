@@ -160,7 +160,10 @@ export function FloorEditor({ areas }: { areas: EditorArea[] }) {
         subtitle={HELP}
         actions={
           <>
-            {dirty && <Badge tone="warn">Μη αποθηκευμένες αλλαγές</Badge>}
+            {/* Πάντα στη ροή (αόρατο όταν δεν υπάρχουν αλλαγές) ώστε να μην μετακινείται ο χάρτης κατά το σύρσιμο. */}
+            <span className={`self-center ${dirty ? "" : "invisible"}`} aria-hidden={!dirty}>
+              <Badge tone="warn">Μη αποθηκευμένες αλλαγές</Badge>
+            </span>
             <button type="button" className="btn-secondary btn-sm" onClick={() => area && clearEdits(area.id)} disabled={!dirty || pending}>
               Επαναφορά
             </button>

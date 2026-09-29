@@ -3,7 +3,7 @@
  * Χάρτης χώρου: εικόνα φόντου (ή πλέγμα) με τα τραπέζια ως μαρκαδόρους σε θέσεις χιλιοστών (0–1000).
  * Κοινός για το PDA (μόνο ανάγνωση, tap) και τη Διαχείριση (σύρσιμο, επιλογή).
  */
-import { useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import type { TableShape } from "@/db/schema";
 
 export type FloorMapTone = "free" | "open" | "billed";
@@ -58,7 +58,7 @@ type Drag = { id: number; pointerId: number; startX: number; startY: number; ori
  * Μέγεθος μαρκαδόρου (% πλάτους) ώστε να μην καλύπτονται τα γειτονικά τραπέζια:
  * 25ο εκατοστημόριο της απόστασης από τον πλησιέστερο γείτονα, μεταξύ 3,5% και 8%.
  */
-function autoMarkerPct(tables: FloorMapTable[], ratio: number) {
+export function autoMarkerPct(tables: FloorMapTable[], ratio: number) {
   if (tables.length < 2) return 8;
   const nearest: number[] = [];
   for (const a of tables) {
@@ -181,7 +181,7 @@ export function FloorMap({ areaImage, tables, onTap, editable = false, onMove, s
             onPointerUp={editable ? onPointerEnd : undefined}
             onPointerCancel={editable ? onPointerEnd : undefined}
             onKeyDown={onKeyDown(t)}
-            className={`@container absolute flex flex-col items-center justify-center overflow-hidden border-2 leading-none shadow-md transition-[box-shadow,transform] ${shapeCls} ${TONE[t.tone]} ${
+            className={`@container absolute flex flex-col items-center justify-center overflow-hidden border-2 px-1 py-0.5 leading-none shadow-md transition-[box-shadow,transform] ${shapeCls} ${TONE[t.tone]} ${
               selected ? "z-20 ring-2 ring-brand ring-offset-2 ring-offset-white" : "z-10"
             } ${dragging ? "scale-110 shadow-xl cursor-grabbing" : editable ? "cursor-grab" : "cursor-pointer active:scale-95"}`}
             style={{
@@ -191,7 +191,6 @@ export function FloorMap({ areaImage, tables, onTap, editable = false, onMove, s
               aspectRatio: wide ? "2 / 1" : "1 / 1",
               transform: `translate(-50%, -50%)${dragging ? " scale(1.1)" : ""}`,
               touchAction: editable ? "none" : "manipulation",
-              padding: "2% 6%",
             }}
           >
             <span className="font-bold truncate max-w-full" style={{ fontSize: `clamp(11px, ${wide ? 17 : 34}cqw, 24px)` }}>

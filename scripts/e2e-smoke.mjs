@@ -98,6 +98,71 @@ try {
   }
   await tab.close();
 
+  // QR take-away: πελάτης σε κινητό, κουζίνα, οθόνη παραλαβών, ταμείο, admin QR
+  const qc = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: "el-GR" });
+  const q = await qc.newPage();
+  q.on("pageerror", (e) => errors.push("order pageerror: " + e.message));
+  q.on("console", (m) => { if (m.type() === "error") errors.push("order console: " + m.text()); });
+  await q.goto(`${BASE}/order`, { waitUntil: "networkidle" });
+  await checkNoError(q, "/order");
+  await q.getByRole("button", { name: /Κυρίως/ }).first().click();
+  await q.waitForTimeout(400);
+  await q.getByRole("button", { name: /Μπριζόλα χοιρινή/ }).first().click();
+  await q.getByRole("button", { name: "Μέτριο", exact: true }).waitFor({ timeout: 10000 });
+  await q.getByRole("button", { name: "Μέτριο", exact: true }).click();
+  await q.getByRole("button", { name: /^Προσθήκη/ }).click();
+  await q.getByRole("button", { name: /Coca-Cola 330ml/ }).first().click();
+  await q.waitForTimeout(300);
+  await q.getByRole("button", { name: /Καλάθι/ }).click();
+  await q.getByRole("heading", { name: "Το καλάθι σου" }).waitFor();
+  await shot(q, "12-order-cart");
+  await q.getByRole("button", { name: "Αποστολή παραγγελίας" }).click();
+  await q.waitForTimeout(300);
+  await q.getByPlaceholder("π.χ. Κώστας").fill("Κώστας");
+  await q.getByPlaceholder("69xxxxxxxx").fill("6912345678");
+  await q.getByRole("button", { name: "Αποστολή παραγγελίας" }).click();
+  await q.waitForURL(/\/order\/[A-Za-z0-9_-]{10,}$/, { timeout: 30000 });
+  await q.waitForLoadState("networkidle");
+  await checkNoError(q, "/order/[token]");
+  const st = await q.locator("body").innerText();
+  if (!/#\d{3}/.test(st) || !st.includes("Ελήφθη")) errors.push("order status page missing code or status");
+  const code = (st.match(/#(\d{3})/) || [])[1];
+  await shot(q, "13-order-status");
+
+  const kq = await (await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: "el-GR" })).newPage();
+  await loginPin(kq, "3333");
+  await kq.goto(`${BASE}/kds`, { waitUntil: "networkidle" });
+  const ticket = kq.locator("article", { hasText: `#${code}` });
+  if (!(await ticket.count())) errors.push("KDS: QR ticket not visible");
+  else await ticket.first().getByRole("button", { name: "ΕΤΟΙΜΟ" }).click();
+  await q.getByText("Η παραγγελία σου είναι έτοιμη!").waitFor({ timeout: 10000 }).catch(() => errors.push("order status: ready panel did not appear live"));
+  await shot(q, "14-order-ready");
+
+  await kq.goto(`${BASE}/pickup`, { waitUntil: "networkidle" });
+  await checkNoError(kq, "/pickup");
+  const readyCol = await kq.locator('section[data-column="ready"]').innerText().catch(() => "");
+  if (!readyCol.includes(code)) errors.push("pickup board: code not in ready column");
+  await shot(kq, "15-pickup-board");
+
+  await loginPin(kq, "2222");
+  await kq.goto(`${BASE}/cashier`, { waitUntil: "networkidle" });
+  const pick = kq.getByRole("button", { name: new RegExp(`Παραδόθηκε η παραγγελία #${code}`) });
+  if (!(await pick.count())) errors.push("cashier: pickup button missing");
+  else await pick.click();
+  await q.getByText("Ευχαριστούμε!").waitFor({ timeout: 10000 }).catch(() => errors.push("order status: thank-you did not appear after pickup"));
+
+  await loginPin(kq, "1234");
+  await kq.goto(`${BASE}/admin/qr`, { waitUntil: "networkidle" });
+  await checkNoError(kq, "/admin/qr");
+  const src = await kq.getByTestId("qr-image").getAttribute("src").catch(() => null);
+  if (!src || !src.startsWith("data:image/png")) errors.push("admin/qr: QR image missing");
+  await shot(kq, "16-admin-qr");
+  await kq.goto(`${BASE}/admin/floor`, { waitUntil: "networkidle" });
+  await checkNoError(kq, "/admin/floor");
+  await shot(kq, "17-admin-floor");
+  await qc.close();
+  await kq.context().close();
+
   // Partners
   const pc = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: "el-GR" });
   const pp = await pc.newPage();
