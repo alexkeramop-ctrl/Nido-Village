@@ -45,7 +45,7 @@ try {
   await p.getByRole("button", { name: /Coca-Cola 330ml/ }).first().click();
   await p.getByRole("button", { name: /Burger/ }).click().catch(() => {});
   await p.getByRole("button", { name: /Classic Burger/ }).first().click();
-  await p.getByRole("button", { name: "Extra τυρί", exact: true }).click().catch(() => {});
+  await p.getByRole("button", { name: /Extra τυρί/ }).click().catch(() => {});
   await p.getByRole("button", { name: /Προσθήκη/ }).click().catch(() => {});
   await shot(p, "03-pda-cart");
   const cartBtn = p.getByRole("button", { name: /Καλάθι/ });
@@ -108,8 +108,8 @@ try {
   await q.getByRole("button", { name: /Burger/ }).first().click();
   await q.waitForTimeout(400);
   await q.getByRole("button", { name: /Classic Burger/ }).first().click();
-  await q.getByRole("button", { name: "Extra τυρί", exact: true }).waitFor({ timeout: 10000 });
-  await q.getByRole("button", { name: "Extra τυρί", exact: true }).click();
+  await q.getByRole("button", { name: /Extra τυρί/ }).waitFor({ timeout: 10000 });
+  await q.getByRole("button", { name: /Extra τυρί/ }).click();
   await q.getByRole("button", { name: /^Προσθήκη/ }).click();
   await q.getByRole("button", { name: /Coca-Cola 330ml/ }).first().click();
   await q.waitForTimeout(300);

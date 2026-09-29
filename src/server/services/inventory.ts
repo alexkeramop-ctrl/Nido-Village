@@ -334,7 +334,7 @@ export async function consumptionReport(from: Date, to: Date) {
     const v = num(r.total);
     if (r.kind === "sale" || r.kind === "void_reversal") e.sold += -v;
     else if (r.kind === "waste") e.waste += -v;
-    else if (r.kind === "count" && !ing.name.startsWith("__")) e.countDiff += v;
+    else if (r.kind === "count") e.countDiff += v;
     else if (r.kind === "purchase") e.purchased += v;
     out.set(r.ingredientId, e);
   }

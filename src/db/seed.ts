@@ -284,7 +284,7 @@ export async function seedDemo(db: Db): Promise<boolean> {
     .returning();
   const ing = (name: string) => ings.find((i) => i.name === name)!.id;
   await db.insert(schema.stockMovements).values(
-    ings.map((i) => ({ ingredientId: i.id, kind: "count" as const, qtyDelta: i.stockQty, note: "Αρχικό απόθεμα (seed)" })),
+    ings.map((i) => ({ ingredientId: i.id, kind: "manual" as const, qtyDelta: i.stockQty, note: "Αρχικό απόθεμα (seed)" })),
   );
 
   const R = (productName: string, lines: [string, number][]) => lines.map(([n, q]) => ({ productId: prod(productName), ingredientId: ing(n), qty: q.toFixed(3) }));

@@ -28,7 +28,7 @@ describe("inventory", () => {
     expect(res[0].delta).toBe(-300);
     expect(num((await ingredientByName("Ντομάτα")).stockQty)).toBe(before - 800);
     const moves = await listMovements({ ingredientId: tomato.id });
-    expect(moves.map((m) => m.kind)).toEqual(["count", "waste", "count"]);
+    expect(moves.map((m) => m.kind)).toEqual(["count", "waste", "manual"]);
   });
 
   it("flags low stock", async () => {
@@ -57,6 +57,6 @@ describe("inventory", () => {
     const rep = await consumptionReport(from, to);
     const tomato = rep.find((r) => r.ingredient.name === "Ντομάτα")!;
     expect(tomato.waste).toBe(500);
-    expect(tomato.countDiff).toBeCloseTo(5000 - 300, 3); // seed count + count adjustment
+    expect(tomato.countDiff).toBeCloseTo(-300, 3); // μόνο η απογραφή, όχι το αρχικό απόθεμα
   });
 });

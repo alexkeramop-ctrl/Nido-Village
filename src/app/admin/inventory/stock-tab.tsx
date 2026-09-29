@@ -144,16 +144,16 @@ export function StockTab({ ingredients, suppliers, units }: { ingredients: Ingre
                   </td>
                   <td className="text-ink-2">{i.supplierName ?? <span className="text-ink-3">—</span>}</td>
                   <td className="text-right whitespace-nowrap">
-                    <button className="btn-ghost btn-sm" onClick={() => setWasteFor(i)}>
+                    <button className="btn-ghost btn-sm px-2" onClick={() => setWasteFor(i)}>
                       Φύρα
                     </button>
-                    <button className="btn-ghost btn-sm" onClick={() => setAdjustFor(i)}>
+                    <button className="btn-ghost btn-sm px-2" onClick={() => setAdjustFor(i)}>
                       Διόρθωση
                     </button>
-                    <button className="btn-ghost btn-sm" onClick={() => setEditModal({ mode: "edit", ing: i })}>
+                    <button className="btn-ghost btn-sm px-2" onClick={() => setEditModal({ mode: "edit", ing: i })}>
                       Επεξεργασία
                     </button>
-                    <button className="btn-ghost btn-sm text-danger" onClick={() => remove(i)} disabled={pending} aria-label={`Διαγραφή ${i.name}`}>
+                    <button className="btn-ghost btn-sm px-2 text-danger" onClick={() => remove(i)} disabled={pending} aria-label={`Διαγραφή ${i.name}`}>
                       Διαγραφή
                     </button>
                   </td>

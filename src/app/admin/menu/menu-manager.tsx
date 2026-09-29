@@ -131,7 +131,7 @@ export function MenuManager({
         }
       />
 
-      <div className="grid grid-cols-1 xl:grid-cols-[18rem_minmax(0,1fr)] gap-4 items-start">
+      <div className="grid grid-cols-1 xl:grid-cols-[20rem_minmax(0,1fr)] gap-4 items-start">
         <Section title="Κατηγορίες" flush>
           {categories.length ? (
             <ul className="divide-y divide-line">
@@ -145,7 +145,7 @@ export function MenuManager({
                     </div>
                   </div>
                   <Toggle checked={c.active} onChange={(v) => toggleCategoryActive(c, v)} disabled={pending} title="Ενεργή" />
-                  <button className="btn-ghost btn-sm" onClick={() => setCatModal({ mode: "edit", cat: c })} aria-label={`Επεξεργασία ${c.name}`} title="Επεξεργασία">
+                  <button className="btn-ghost btn-sm px-2" onClick={() => setCatModal({ mode: "edit", cat: c })} aria-label={`Επεξεργασία ${c.name}`} title="Επεξεργασία">
                     ✎
                   </button>
                   <button className="btn-ghost btn-sm text-danger px-2" onClick={() => removeCategory(c)} disabled={pending} aria-label={`Διαγραφή ${c.name}`} title="Διαγραφή">
