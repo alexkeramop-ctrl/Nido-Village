@@ -49,7 +49,7 @@ export function kitchenTicket(i: KitchenTicketInput): TicketDoc {
   t.beep();
   t.text(i.stationName, { align: "center", bold: true });
   t.title(`${ORDER_TYPE_LABEL[i.orderType]} ${i.tableName}`);
-  if (i.label) t.center(i.label, true);
+  if (i.label && i.label !== i.tableName) t.center(i.label, true);
   t.row(`Γύρος ${i.roundNo}`, fmtTime(i.time));
   t.row(`Σερβ.: ${i.waiter}`, fmtDateTime(i.time).slice(0, 10));
   t.hr("=");
