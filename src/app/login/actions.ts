@@ -2,6 +2,7 @@
 import { redirect } from "next/navigation";
 import { clearSessionCookie, loginWithPin, setSessionCookie } from "@/server/auth";
 import type { ActionResult } from "@/server/action";
+import { homeFor } from "@/components/ops/home";
 
 export async function loginAction(pin: string, next?: string): Promise<ActionResult> {
   if (!/^\d{4,8}$/.test(pin)) return { ok: false, error: "Δώσε PIN 4 έως 8 ψηφίων" };
@@ -15,17 +16,4 @@ export async function loginAction(pin: string, next?: string): Promise<ActionRes
 export async function logoutAction() {
   await clearSessionCookie();
   redirect("/login");
-}
-
-export function homeFor(role: string) {
-  switch (role) {
-    case "kitchen":
-      return "/kds";
-    case "cashier":
-      return "/cashier";
-    case "waiter":
-      return "/pda";
-    default:
-      return "/admin";
-  }
 }

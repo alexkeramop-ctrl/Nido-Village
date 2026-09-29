@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/server/auth";
-import { homeFor } from "./login/actions";
+import { homeFor } from "@/components/ops/home";
 
 export const dynamic = "force-dynamic";
 
