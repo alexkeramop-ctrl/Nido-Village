@@ -1,4 +1,5 @@
 "use client";
+import { unstable_rethrow } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Field, Modal, Money, useToast } from "@/components/ui";
 import { formatEuro } from "@/server/money";
@@ -150,11 +151,22 @@ export function OrderClient({ menu, venueName }: { menu: Menu; venueName: string
     if (ph && !/^\+?\d{10,14}$/.test(ph)) return toast("Το τηλέφωνο δεν φαίνεται σωστό", "danger");
     setStoredJson(CUSTOMER_KEY, { name: n, phone: ph });
     const lines: CartLine[] = cart.map((l) => ({ productId: l.productId, qty: l.qty, notes: l.notes || null, modifierIds: l.modifiers.map((m) => m.id) }));
+    const snapshot = cart;
     start(async () => {
-      const r = await placeQrOrderAction({ customerName: n, customerPhone: ph || null, notes: orderNotes.trim() || null, lines });
-      if (r && !r.ok) return toast(r.error, "danger");
-      // Επιτυχία: το action έκανε redirect στη σελίδα κατάστασης· καθαρίζουμε το καλάθι.
+      // Σε επιτυχία το action κάνει redirect: το Next απορρίπτει το promise με redirect error (το χειρίζεται το RedirectBoundary),
+      // οπότε καθαρίζουμε το καλάθι πριν την κλήση και το επαναφέρουμε μόνο αν η αποστολή αποτύχει.
       setStoredJson(CART_KEY, null);
+      try {
+        const r = await placeQrOrderAction({ customerName: n, customerPhone: ph || null, notes: orderNotes.trim() || null, lines });
+        if (r && !r.ok) {
+          setStoredJson(CART_KEY, snapshot);
+          toast(r.error, "danger");
+        }
+      } catch (e) {
+        unstable_rethrow(e);
+        setStoredJson(CART_KEY, snapshot);
+        toast("Η παραγγελία δεν στάλθηκε. Έλεγξε τη σύνδεση και δοκίμασε ξανά.", "danger");
+      }
     });
   };
 

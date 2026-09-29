@@ -103,15 +103,17 @@ export function StatusClient({ order, token, venueName }: { order: PublicOrder; 
     } catch {
       /* ignore */
     }
+    setArmed(true);
+    // Το requestPermission μπορεί να μείνει εκκρεμές (ο χρήστης αγνοεί το prompt): δεν μπλοκάρει την κατάσταση.
     if ("Notification" in window) {
       try {
-        const p = Notification.permission === "default" ? await Notification.requestPermission() : Notification.permission;
-        setNotif(p);
+        if (Notification.permission === "default") {
+          Notification.requestPermission().then(setNotif).catch(() => undefined);
+        } else setNotif(Notification.permission);
       } catch {
         /* ignore */
       }
     }
-    setArmed(true);
   };
 
   const idx = stepIndex(order.status);
