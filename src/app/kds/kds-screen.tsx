@@ -129,7 +129,9 @@ export function KdsScreen({ stations, stationId, tickets }: { stations: KdsStati
                               {it.notes && <div className="mt-0.5 inline-block rounded px-1.5 py-0.5 bg-amber-400/25 text-amber-100 text-sm font-medium">{it.notes}</div>}
                             </div>
                             <div className="shrink-0 flex flex-col items-end gap-1">
-                              <span className="rounded-full bg-white/10 text-[11px] px-2 py-0.5 text-slate-200 num">{courseLabel(it.course)}</span>
+                              {new Set(t.items.map((x) => x.course)).size > 1 && (
+                                <span className="rounded-full bg-white/10 text-[11px] px-2 py-0.5 text-slate-200 num">{courseLabel(it.course)}</span>
+                              )}
                               {preparing && <span className="text-[11px] font-semibold text-emerald-300">ΕΤΟΙΜΑΖΕΤΑΙ</span>}
                               {ready && <span className="text-[11px] font-semibold text-emerald-300">✓ ΕΤΟΙΜΟ</span>}
                             </div>

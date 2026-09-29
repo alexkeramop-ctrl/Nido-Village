@@ -18,7 +18,7 @@ export const DEFAULT_SETTINGS: VenueSettings = {
   taxOffice: "",
   address: "",
   phone: "",
-  courses: 3,
+  courses: 1,
 };
 
 export async function getSettings(): Promise<VenueSettings> {

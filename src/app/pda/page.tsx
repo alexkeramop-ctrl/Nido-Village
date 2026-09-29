@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 /** PDA: η κάτοψη (χάρτης ή λίστα) με τα τραπέζια και τα πακέτα. */
 export default async function PdaPage() {
-  const user = await requirePageUser("waiter", "cashier", "manager", "admin");
+  const user = await requirePageUser("kitchen", "waiter", "cashier", "manager", "admin");
   const floor = await getFloor();
   const images = new Map<number, FloorMapImage>();
   for (const a of floor.areas) {

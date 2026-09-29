@@ -13,9 +13,10 @@ export async function listAreas(includeInactive = false) {
   return includeInactive ? rows : rows.filter((a) => a.active).map((a) => ({ ...a, tables: a.tables.filter((t) => t.active) }));
 }
 
-export async function upsertArea(input: { id?: number; name: string; sort?: number; active?: boolean }) {
+export async function upsertArea(input: { id?: number; name: string; sort?: number; active?: boolean; barStationId?: number | null }) {
   const db = await getDb();
-  const values = { name: input.name.trim(), sort: input.sort ?? 0, active: input.active ?? true };
+  const values: Partial<typeof schema.areas.$inferInsert> & { name: string } = { name: input.name.trim(), sort: input.sort ?? 0, active: input.active ?? true };
+  if (input.barStationId !== undefined) values.barStationId = input.barStationId;
   if (!values.name) throw new Error("Απαιτείται όνομα χώρου");
   const [row] = input.id
     ? await db.update(schema.areas).set(values).where(eq(schema.areas.id, input.id)).returning()

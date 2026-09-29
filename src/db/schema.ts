@@ -47,7 +47,11 @@ export const employees = pgTable("employees", {
   name: text().notNull(),
   role: text().$type<EmployeeRole>().notNull().default("waiter"),
   pinHash: text().notNull(),
+  /** Το PIN κρυπτογραφημένο (AES-GCM με το NIDO_SECRET) ώστε ο διαχειριστής να μπορεί να το δει. */
+  pinEncrypted: text(),
   active: boolean().notNull().default(true),
+  /** Διαγραμμένος (κρύβεται παντού, μένει μόνο για το ιστορικό πωλήσεων). */
+  deletedAt: ts(),
   createdAt: ts().notNull().defaultNow(),
 });
 
@@ -69,6 +73,8 @@ export const areas = pgTable("areas", {
   active: boolean().notNull().default(true),
   /** Εικόνα φόντου για τον χάρτη του χώρου (π.χ. αεροφωτογραφία). */
   mapAssetId: integer().references(() => assets.id),
+  /** Το μπαρ που εξυπηρετεί τον χώρο: τα ροφήματα των τραπεζιών του τυπώνονται εκεί. */
+  barStationId: integer().references(() => printStations.id),
 });
 
 export type TableShape = "square" | "round" | "wide";
@@ -439,6 +445,12 @@ export const ingredients = pgTable("ingredients", {
   /** Κόστος ανά μονάδα σε ευρώ (π.χ. 0.0085 €/g). */
   costPerUnit: numeric({ precision: 12, scale: 4 }).notNull().default("0"),
   supplierId: integer().references(() => suppliers.id),
+  /** Συσκευασία: πόσες μονάδες έχει (π.χ. μπουκάλι 700 ml) και πώς λέγεται. Για απογραφή σε συσκευασίες. */
+  packSize: numeric({ precision: 12, scale: 3 }),
+  packName: text(),
+  /** Μερίδα/ποτό: πόσες μονάδες καταναλώνει μία μερίδα (π.χ. 60 ml). Για αναφορές σε «ποτά». */
+  portionQty: numeric({ precision: 12, scale: 3 }),
+  portionName: text(),
   active: boolean().notNull().default(true),
 });
 
@@ -501,6 +513,45 @@ export const goodsReceiptLines = pgTable("goods_receipt_lines", {
 });
 
 /* ------------------------------------------------------------------ */
+/* Εκδηλώσεις (γάμοι, βαφτίσεις, πάρτι, σχολικές εκδρομές)              */
+/* ------------------------------------------------------------------ */
+
+export type EventType = "wedding" | "christening" | "party" | "school_trip" | "corporate" | "other";
+export type EventStatus = "inquiry" | "confirmed" | "cancelled" | "done";
+
+export const events = pgTable(
+  "events",
+  {
+    id: serial().primaryKey(),
+    title: text().notNull(),
+    type: text().$type<EventType>().notNull().default("party"),
+    status: text().$type<EventStatus>().notNull().default("inquiry"),
+    /** Ημερομηνία (YYYY-MM-DD, ώρα Αθήνας) και ώρες έναρξης/λήξης (HH:MM). */
+    date: text().notNull(),
+    startTime: text().notNull().default("12:00"),
+    endTime: text().notNull().default("16:00"),
+    guests: integer().notNull().default(0),
+    areaId: integer().references(() => areas.id),
+    customerName: text().notNull().default(""),
+    customerPhone: text(),
+    customerEmail: text(),
+    priceCents: integer().notNull().default(0),
+    depositCents: integer().notNull().default(0),
+    depositPaid: boolean().notNull().default(false),
+    menuNotes: text(),
+    notes: text(),
+    createdBy: integer().references(() => employees.id),
+    createdAt: ts().notNull().defaultNow(),
+    updatedAt: ts().notNull().defaultNow(),
+  },
+  (t) => [index("events_date_idx").on(t.date), index("events_status_idx").on(t.status)],
+);
+
+export const eventsRelations = relations(events, ({ one }) => ({
+  area: one(areas, { fields: [events.areaId], references: [areas.id] }),
+}));
+
+/* ------------------------------------------------------------------ */
 /* Cloud: στατιστικά για συνεταίρους                                    */
 /* ------------------------------------------------------------------ */
 
@@ -530,6 +581,7 @@ export const partnerUsers = pgTable("partner_users", {
 export const areasRelations = relations(areas, ({ many, one }) => ({
   tables: many(tables),
   mapAsset: one(assets, { fields: [areas.mapAssetId], references: [assets.id] }),
+  barStation: one(printStations, { fields: [areas.barStationId], references: [printStations.id] }),
 }));
 export const tablesRelations = relations(tables, ({ one }) => ({
   area: one(areas, { fields: [tables.areaId], references: [areas.id] }),

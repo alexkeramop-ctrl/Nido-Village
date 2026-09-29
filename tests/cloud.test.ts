@@ -16,24 +16,24 @@ beforeAll(async () => {
 describe("cloud snapshot", () => {
   it("computes, stores and reads back a snapshot with daily history", async () => {
     const t = await tableByName("Κ3");
-    const p = await productByName("Καλαμάρι τηγανητό");
+    const p = await productByName("Cheeseburger");
     const s = await openSession({ tableId: t.id, covers: 2 }, waiter.id);
     await sendRound(s.id, [{ productId: p.id, qty: 2 }], waiter.id);
-    await addPayment(s.id, { method: "card", amountCents: 2600 }, cashier.id);
+    await addPayment(s.id, { method: "card", amountCents: 1800 }, cashier.id);
 
     const snap = await computeSnapshot();
     expect(snap.version).toBe(1);
     expect(snap.venueName).toBe("Nido Village");
-    expect(snap.today.grossCents).toBe(2600);
-    expect(snap.mtd.grossCents).toBe(2600);
-    expect(snap.topProducts30[0].name).toBe("Καλαμάρι τηγανητό");
+    expect(snap.today.grossCents).toBe(1800);
+    expect(snap.mtd.grossCents).toBe(1800);
+    expect(snap.topProducts30[0].name).toBe("Cheeseburger");
     expect(snap.live.openSessions).toBe(0);
     expect(snap.printers.map((x) => x.name)).toContain("Κουζίνα");
 
     expect(await getLatestSnapshot()).toBeNull();
     await storeSnapshot(snap);
     const latest = await getLatestSnapshot();
-    expect(latest?.snapshot.today.grossCents).toBe(2600);
+    expect(latest?.snapshot.today.grossCents).toBe(1800);
     const hist = await getDailyHistory();
     expect(hist).toHaveLength(1);
     expect(hist[0].day).toBe(snap.today.range.from);

@@ -2,7 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { run } from "@/server/action";
 import { requireRole } from "@/server/auth";
-import { ROLE_LABEL, upsertEmployee } from "@/server/services/staff";
+import { ROLE_LABEL, deleteEmployee, revealPin, upsertEmployee } from "@/server/services/staff";
 import type { EmployeeRole } from "@/db/schema";
 
 export async function saveEmployeeAction(input: { id?: number; name: string; role: string; pin: string; active: boolean }) {
@@ -14,5 +14,23 @@ export async function saveEmployeeAction(input: { id?: number; name: string; rol
     if (pin && !/^\d{4,8}$/.test(pin)) throw new Error("Το PIN πρέπει να έχει 4 έως 8 ψηφία");
     await upsertEmployee({ id: input.id, name: input.name.trim(), role: input.role as EmployeeRole, pin: pin || undefined, active: input.active });
     revalidatePath("/admin/staff");
+  });
+}
+
+export async function revealPinAction(employeeId: number) {
+  return run(async () => {
+    const me = await requireRole("admin");
+    const pin = await revealPin(employeeId, me.id);
+    if (!pin) throw new Error("Το PIN δεν είναι διαθέσιμο. Όρισε νέο PIN από την επεξεργασία.");
+    return pin;
+  });
+}
+
+export async function deleteEmployeeAction(employeeId: number) {
+  return run(async () => {
+    const me = await requireRole("admin");
+    const mode = await deleteEmployee(employeeId, me.id);
+    revalidatePath("/admin/staff");
+    return mode;
   });
 }

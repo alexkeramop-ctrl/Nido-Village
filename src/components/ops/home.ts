@@ -2,7 +2,7 @@
 export function homeFor(role: string): string {
   switch (role) {
     case "kitchen":
-      return "/kds";
+      return "/pda";
     case "cashier":
       return "/cashier";
     case "waiter":

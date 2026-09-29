@@ -10,7 +10,7 @@ export default async function StaffPage() {
   return (
     <StaffManager
       currentUserId={user.id}
-      employees={employees.map((e) => ({ id: e.id, name: e.name, role: e.role, active: e.active, createdAt: e.createdAt.toISOString() }))}
+      employees={employees.map((e) => ({ id: e.id, name: e.name, role: e.role, active: e.active, hasPin: e.hasPin, createdAt: e.createdAt.toISOString() }))}
       roles={Object.entries(ROLE_LABEL).map(([value, label]) => ({ value, label }))}
     />
   );

@@ -18,8 +18,8 @@ describe("QR takeaway ordering", () => {
     const db = await getDb();
     const menu = await getPublicMenu();
     expect(menu.length).toBeGreaterThan(3);
-    const brizola = await productByName("Μπριζόλα χοιρινή");
-    const medium = await modifierByName("Μέτριο");
+    const brizola = await productByName("Classic Burger");
+    const medium = await modifierByName("Extra τυρί");
     await expect(placeQrOrder({ customerName: "K", lines: [{ productId: brizola.id, qty: 1 }] })).rejects.toThrow(/όνομ/);
     await expect(placeQrOrder({ customerName: "Κώστας", lines: [] })).rejects.toThrow(/άδειο/);
     await expect(placeQrOrder({ customerName: "Κώστας", customerPhone: "123", lines: [{ productId: brizola.id, qty: 1 }] })).rejects.toThrow(/τηλέφωνο/);
@@ -37,8 +37,8 @@ describe("QR takeaway ordering", () => {
     let o = (await getPublicOrder(r.token))!;
     expect(o.status).toBe("received");
     expect(o.customerName).toBe("Κώστας");
-    expect(o.items[0].modifiers).toEqual(["Μέτριο"]);
-    expect(o.totalCents).toBe(2400);
+    expect(o.items[0].modifiers).toEqual(["Extra τυρί"]);
+    expect(o.totalCents).toBe(1900);
     expect(o.paid).toBe(false);
 
     // kitchen sees it as a takeaway ticket with the pickup code
@@ -65,7 +65,7 @@ describe("QR takeaway ordering", () => {
     expect(await listPickupBoard()).toHaveLength(0);
 
     const cashier = await employeeByName("Νίκος");
-    await addPayment(r.sessionId, { method: "card", amountCents: 2400 }, cashier.id);
+    await addPayment(r.sessionId, { method: "card", amountCents: 1900 }, cashier.id);
     o = (await getPublicOrder(r.token))!;
     expect(o.status).toBe("done");
     expect(o.paid).toBe(true);
@@ -77,7 +77,7 @@ describe("QR takeaway ordering", () => {
   });
 
   it("a new round after ready resets readiness", async () => {
-    const brizola = await productByName("Μπριζόλα χοιρινή");
+    const brizola = await productByName("Classic Burger");
     const r = await placeQrOrder({ customerName: "Γιάννης", lines: [{ productId: brizola.id, qty: 1 }] });
     const t = (await getKdsTickets()).find((x) => x.sessionId === r.sessionId)!;
     await bumpOrder(t.orderId);

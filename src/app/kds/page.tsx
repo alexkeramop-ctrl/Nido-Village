@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 /** Οθόνη κουζίνας (KDS). ?station=<id>|all */
 export default async function KdsPage({ searchParams }: { searchParams: Promise<{ station?: string | string[] }> }) {
-  const user = await requirePageUser();
+  const user = await requirePageUser("manager", "admin");
   const sp = await searchParams;
   const raw = Array.isArray(sp.station) ? sp.station[0] : sp.station;
   const stations = (await listStations(false)).filter((s) => s.kind === "kitchen" || s.kind === "bar");

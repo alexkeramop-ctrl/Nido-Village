@@ -3,16 +3,44 @@ import { useState } from "react";
 import { Badge, EmptyState, Field } from "@/components/ui";
 import { FormModal, InfoBox, PageHeader, Section, TableWrap, Toggle, formValues, useActionRunner } from "@/components/admin/common";
 import { fmtDateOnly } from "@/components/admin/format";
-import { saveEmployeeAction } from "./actions";
+import { deleteEmployeeAction, revealPinAction, saveEmployeeAction } from "./actions";
 
-type Employee = { id: number; name: string; role: string; active: boolean; createdAt: string };
+type Employee = { id: number; name: string; role: string; active: boolean; hasPin: boolean; createdAt: string };
 type Role = { value: string; label: string };
 type EmpModal = { mode: "new" } | { mode: "edit"; emp: Employee } | null;
 
 export function StaffManager({ employees, roles, currentUserId }: { employees: Employee[]; roles: Role[]; currentUserId: number }) {
   const { run, pending, toastElement } = useActionRunner();
   const [modal, setModal] = useState<EmpModal>(null);
+  const [shownPins, setShownPins] = useState<Record<number, string>>({});
+  const [showPinInput, setShowPinInput] = useState(false);
   const roleLabel = (r: string) => roles.find((x) => x.value === r)?.label ?? r;
+
+  const reveal = (e: Employee) => {
+    if (shownPins[e.id]) {
+      setShownPins((m) => {
+        const c = { ...m };
+        delete c[e.id];
+        return c;
+      });
+      return;
+    }
+    run(() => revealPinAction(e.id), {
+      onSuccess: (pin) => {
+        setShownPins((m) => ({ ...m, [e.id]: pin as string }));
+        setTimeout(() => setShownPins((m) => {
+          const c = { ...m };
+          delete c[e.id];
+          return c;
+        }), 20000);
+      },
+    });
+  };
+
+  const remove = (e: Employee) => {
+    if (!confirm(`Διαγραφή του υπαλλήλου «${e.name}»; Αν έχει ιστορικό πωλήσεων, θα αποκρυφτεί και θα ακυρωθεί το PIN του.`)) return;
+    run(() => deleteEmployeeAction(e.id), { success: "Ο υπάλληλος διαγράφηκε" });
+  };
 
   const submit = (fd: FormData) => {
     const v = formValues(fd);
@@ -52,6 +80,7 @@ export function StaffManager({ employees, roles, currentUserId }: { employees: E
                 <th>Όνομα</th>
                 <th>Ρόλος</th>
                 <th>Κατάσταση</th>
+                <th>PIN</th>
                 <th>Από</th>
                 <th></th>
               </tr>
@@ -67,11 +96,30 @@ export function StaffManager({ employees, roles, currentUserId }: { employees: E
                     <Badge tone={e.role === "admin" ? "brand" : "neutral"}>{roleLabel(e.role)}</Badge>
                   </td>
                   <td>{e.active ? <Badge tone="ok">Ενεργός</Badge> : <Badge>Ανενεργός</Badge>}</td>
+                  <td>
+                    {shownPins[e.id] ? (
+                      <span className="inline-flex items-center gap-2">
+                        <span className="num font-bold tracking-widest">{shownPins[e.id]}</span>
+                        <button className="btn-ghost btn-sm" onClick={() => reveal(e)}>
+                          Απόκρυψη
+                        </button>
+                      </span>
+                    ) : (
+                      <button className="btn-secondary btn-sm" onClick={() => reveal(e)} disabled={pending || !e.hasPin} title={e.hasPin ? "" : "Δεν υπάρχει αποθηκευμένο PIN· όρισε νέο από την επεξεργασία"}>
+                        Εμφάνιση PIN
+                      </button>
+                    )}
+                  </td>
                   <td className="num text-ink-3">{fmtDateOnly(e.createdAt)}</td>
-                  <td className="text-right">
+                  <td className="text-right whitespace-nowrap">
                     <button className="btn-ghost btn-sm" onClick={() => setModal({ mode: "edit", emp: e })}>
                       Επεξεργασία
                     </button>
+                    {e.id !== currentUserId && (
+                      <button className="btn-ghost btn-sm text-danger" onClick={() => remove(e)} disabled={pending}>
+                        Διαγραφή
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -98,7 +146,21 @@ export function StaffManager({ employees, roles, currentUserId }: { employees: E
           </select>
         </Field>
         <Field label={editing ? "Νέο PIN" : "PIN"} hint={editing ? "4–8 ψηφία. Άφησέ το κενό για να μείνει το τρέχον." : "4–8 ψηφία, μοναδικό ανά υπάλληλο."}>
-          <input name="pin" className="input num" inputMode="numeric" pattern="[0-9]{4,8}" autoComplete="off" required={!editing} placeholder={editing ? "••••" : ""} />
+          <div className="flex gap-2">
+            <input
+              name="pin"
+              type={showPinInput ? "text" : "password"}
+              className="input num"
+              inputMode="numeric"
+              pattern="[0-9]{4,8}"
+              autoComplete="new-password"
+              required={!editing}
+              placeholder={editing ? "••••" : ""}
+            />
+            <button type="button" className="btn-secondary btn-sm whitespace-nowrap" onClick={() => setShowPinInput((v) => !v)}>
+              {showPinInput ? "Απόκρυψη" : "Εμφάνιση"}
+            </button>
+          </div>
         </Field>
         <Toggle name="active" defaultChecked={editing?.active ?? true} label="Ενεργός (μπορεί να συνδεθεί)" disabled={isSelf} />
         {isSelf && <p className="text-xs text-ink-3">Δεν μπορείς να απενεργοποιήσεις τον εαυτό σου.</p>}

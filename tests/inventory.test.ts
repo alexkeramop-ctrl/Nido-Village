@@ -11,12 +11,12 @@ beforeAll(async () => {
 
 describe("inventory", () => {
   it("receives goods with moving average cost", async () => {
-    const pork = await ingredientByName("Χοιρινή μπριζόλα"); // 12000 g @ 0.0095
-    const r = await receiveGoods({ docNumber: "ΤΔΑ-100", lines: [{ ingredientId: pork.id, qty: 4000, unitCost: 0.0115 }] }, admin.id);
-    expect(r.totalCents).toBe(4600);
-    const after = await ingredientByName("Χοιρινή μπριζόλα");
-    expect(num(after.stockQty)).toBe(16000);
-    expect(num(after.costPerUnit)).toBeCloseTo((12000 * 0.0095 + 4000 * 0.0115) / 16000, 6);
+    const pork = await ingredientByName("Μπιφτέκι μοσχαρίσιο 150g"); // 60 pcs @ 1.60
+    const r = await receiveGoods({ docNumber: "ΤΔΑ-100", lines: [{ ingredientId: pork.id, qty: 40, unitCost: 1.9 }] }, admin.id);
+    expect(r.totalCents).toBe(7600);
+    const after = await ingredientByName("Μπιφτέκι μοσχαρίσιο 150g");
+    expect(num(after.stockQty)).toBe(100);
+    expect(num(after.costPerUnit)).toBeCloseTo((60 * 1.6 + 40 * 1.9) / 100, 6);
   });
 
   it("records waste and counts", async () => {
@@ -32,23 +32,23 @@ describe("inventory", () => {
   });
 
   it("flags low stock", async () => {
-    const olives = await ingredientByName("Ελιές"); // 3000 min 500
-    await recordWaste(olives.id, 2600, "test", admin.id);
+    const olives = await ingredientByName("Bacon"); // 2000 min 400
+    await recordWaste(olives.id, 1700, "test", admin.id);
     const list = await listIngredients();
     expect(list.find((i) => i.id === olives.id)?.low).toBe(true);
     expect(list.find((i) => i.name === "Ντομάτα")?.low).toBe(false);
   });
 
   it("edits a recipe and computes product cost", async () => {
-    const p = await productByName("Τζατζίκι");
+    const p = await productByName("Cappuccino");
     const before = await getRecipe(p.id);
-    expect(before.length).toBe(3);
-    const yog = await ingredientByName("Γιαούρτι");
+    expect(before.length).toBe(2);
+    const yog = await ingredientByName("Γάλα");
     await setRecipe({ productId: p.id }, [{ ingredientId: yog.id, qty: 200 }]);
     const after = await getRecipe(p.id);
     expect(after).toHaveLength(1);
     const costs = await recipeCosts();
-    expect(costs.get(p.id)).toBe(Math.round(200 * 0.004 * 100));
+    expect(costs.get(p.id)).toBe(Math.round(200 * 0.0013 * 100));
   });
 
   it("consumption report aggregates movements", async () => {
@@ -57,6 +57,6 @@ describe("inventory", () => {
     const rep = await consumptionReport(from, to);
     const tomato = rep.find((r) => r.ingredient.name === "Ντομάτα")!;
     expect(tomato.waste).toBe(500);
-    expect(tomato.countDiff).toBeCloseTo(15000 - 300, 3); // seed count + count adjustment
+    expect(tomato.countDiff).toBeCloseTo(5000 - 300, 3); // seed count + count adjustment
   });
 });

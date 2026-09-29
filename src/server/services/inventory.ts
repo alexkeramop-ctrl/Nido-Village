@@ -53,6 +53,12 @@ export async function listIngredients(includeInactive = false) {
       cost: num(i.costPerUnit),
       low: num(i.minQty) > 0 && num(i.stockQty) <= num(i.minQty),
       stockValueCents: Math.round(num(i.stockQty) * num(i.costPerUnit) * 100),
+      packSize: i.packSize ? num(i.packSize) : null,
+      portionQty: i.portionQty ? num(i.portionQty) : null,
+      /** Απόθεμα σε συσκευασίες (π.χ. 2,4 μπουκάλια) αν έχει οριστεί συσκευασία. */
+      stockPacks: i.packSize && num(i.packSize) > 0 ? Math.round((num(i.stockQty) / num(i.packSize)) * 100) / 100 : null,
+      /** Απόθεμα σε μερίδες/ποτά αν έχει οριστεί μερίδα. */
+      stockPortions: i.portionQty && num(i.portionQty) > 0 ? Math.floor(num(i.stockQty) / num(i.portionQty)) : null,
     }));
 }
 
@@ -64,6 +70,10 @@ export async function upsertIngredient(input: {
   costPerUnit?: number;
   supplierId?: number | null;
   active?: boolean;
+  packSize?: number | null;
+  packName?: string | null;
+  portionQty?: number | null;
+  portionName?: string | null;
 }) {
   const db = await getDb();
   const values = {
@@ -73,6 +83,10 @@ export async function upsertIngredient(input: {
     costPerUnit: qty4(input.costPerUnit ?? 0),
     supplierId: input.supplierId ?? null,
     active: input.active ?? true,
+    packSize: input.packSize && input.packSize > 0 ? qty3(input.packSize) : null,
+    packName: input.packSize && input.packSize > 0 ? input.packName?.trim() || "συσκευασία" : null,
+    portionQty: input.portionQty && input.portionQty > 0 ? qty3(input.portionQty) : null,
+    portionName: input.portionQty && input.portionQty > 0 ? input.portionName?.trim() || "μερίδα" : null,
   };
   if (!values.name) throw new Error("Απαιτείται όνομα πρώτης ύλης");
   const [row] = input.id
@@ -299,17 +313,74 @@ export async function consumptionReport(from: Date, to: Date) {
     .groupBy(schema.stockMovements.ingredientId, schema.stockMovements.kind);
   const ings = await listIngredients(true);
   const byId = new Map(ings.map((i) => [i.id, i]));
-  const out = new Map<number, { ingredient: (typeof ings)[number]; sold: number; waste: number; countDiff: number; purchased: number }>();
+  type Row = {
+    ingredient: (typeof ings)[number];
+    sold: number;
+    waste: number;
+    countDiff: number;
+    purchased: number;
+    /** Πωλήσεις σε μερίδες/ποτά (αν έχει οριστεί μερίδα). */
+    soldPortions: number | null;
+    /** Απόκλιση απογραφής σε μερίδες/ποτά: αρνητικό = λείπουν. */
+    countDiffPortions: number | null;
+    /** Απόκλιση απογραφής σε λεπτά (αρνητικό = χαμένη αξία). */
+    countDiffCents: number;
+  };
+  const out = new Map<number, Row>();
   for (const r of rows) {
     const ing = byId.get(r.ingredientId);
     if (!ing) continue;
-    const e = out.get(r.ingredientId) ?? { ingredient: ing, sold: 0, waste: 0, countDiff: 0, purchased: 0 };
+    const e = out.get(r.ingredientId) ?? { ingredient: ing, sold: 0, waste: 0, countDiff: 0, purchased: 0, soldPortions: null, countDiffPortions: null, countDiffCents: 0 };
     const v = num(r.total);
     if (r.kind === "sale" || r.kind === "void_reversal") e.sold += -v;
     else if (r.kind === "waste") e.waste += -v;
-    else if (r.kind === "count") e.countDiff += v;
+    else if (r.kind === "count" && !ing.name.startsWith("__")) e.countDiff += v;
     else if (r.kind === "purchase") e.purchased += v;
     out.set(r.ingredientId, e);
   }
+  for (const e of out.values()) {
+    const portion = e.ingredient.portionQty;
+    e.soldPortions = portion ? Math.round((e.sold / portion) * 10) / 10 : null;
+    e.countDiffPortions = portion ? Math.round((e.countDiff / portion) * 10) / 10 : null;
+    e.countDiffCents = Math.round(e.countDiff * e.ingredient.cost * 100);
+  }
   return [...out.values()].sort((a, b) => a.ingredient.name.localeCompare(b.ingredient.name, "el"));
+}
+
+/**
+ * Διαγραφή πρώτης ύλης. Αν έχει κινήσεις ή χρησιμοποιείται σε συνταγές: απενεργοποίηση και αφαίρεση από τις συνταγές.
+ * Αλλιώς πλήρης διαγραφή.
+ */
+export async function deleteIngredient(id: number, employeeId: number): Promise<"deleted" | "archived"> {
+  const db = await getDb();
+  const ing = await db.query.ingredients.findFirst({ where: eq(schema.ingredients.id, id) });
+  if (!ing) throw new Error("Η πρώτη ύλη δεν βρέθηκε");
+  const [m] = await db.select({ n: sql<number>`count(*)::int` }).from(schema.stockMovements).where(and(eq(schema.stockMovements.ingredientId, id), sql`${schema.stockMovements.kind} <> 'count'`));
+  const [g] = await db.select({ n: sql<number>`count(*)::int` }).from(schema.goodsReceiptLines).where(eq(schema.goodsReceiptLines.ingredientId, id));
+  const hasHistory = (m?.n ?? 0) > 0 || (g?.n ?? 0) > 0;
+  await db.transaction(async (tx) => {
+    await tx.delete(schema.recipeLines).where(eq(schema.recipeLines.ingredientId, id));
+    if (hasHistory) {
+      await tx.update(schema.ingredients).set({ active: false, minQty: "0" }).where(eq(schema.ingredients.id, id));
+    } else {
+      await tx.delete(schema.stockMovements).where(eq(schema.stockMovements.ingredientId, id));
+      await tx.delete(schema.ingredients).where(eq(schema.ingredients.id, id));
+    }
+    await audit(tx, employeeId, "ingredient_delete", "ingredient", id, { name: ing.name, mode: hasHistory ? "archived" : "hard" });
+  });
+  emit({ type: "stock.changed" });
+  return hasHistory ? "archived" : "deleted";
+}
+
+/** Διαγραφή προμηθευτή: αποσυνδέεται από τις πρώτες ύλες· αν έχει παραλαβές, απλώς απενεργοποιείται. */
+export async function deleteSupplier(id: number): Promise<"deleted" | "archived"> {
+  const db = await getDb();
+  const [r] = await db.select({ n: sql<number>`count(*)::int` }).from(schema.goodsReceipts).where(eq(schema.goodsReceipts.supplierId, id));
+  await db.update(schema.ingredients).set({ supplierId: null }).where(eq(schema.ingredients.supplierId, id));
+  if ((r?.n ?? 0) > 0) {
+    await db.update(schema.suppliers).set({ active: false }).where(eq(schema.suppliers.id, id));
+    return "archived";
+  }
+  await db.delete(schema.suppliers).where(eq(schema.suppliers.id, id));
+  return "deleted";
 }

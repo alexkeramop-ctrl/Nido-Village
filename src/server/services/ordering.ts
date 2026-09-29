@@ -63,7 +63,7 @@ export async function sendRound(sessionId: number, cart: CartLine[], employeeId:
   if (!lines.length) throw new Error("Η παραγγελία είναι κενή");
   const session = await db.query.tableSessions.findFirst({
     where: eq(schema.tableSessions.id, sessionId),
-    with: { table: true, orders: true },
+    with: { table: { with: { area: true } }, orders: true },
   });
   if (!session) throw new Error("Η συνεδρία δεν βρέθηκε");
   if (session.status === "closed" || session.status === "cancelled") throw new Error("Η συνεδρία έχει κλείσει");
@@ -84,6 +84,14 @@ export async function sendRound(sessionId: number, cart: CartLine[], employeeId:
 
   const stations = await db.query.printStations.findMany({ where: eq(schema.printStations.enabled, true) });
   const stationById = new Map(stations.map((s) => [s.id, s]));
+  // Ροφήματα: τυπώνονται στο μπαρ του χώρου όπου βρίσκεται το τραπέζι (αν έχει οριστεί).
+  const areaBar = session.table?.area?.barStationId ?? null;
+  const resolveStation = (id: number | null) => {
+    if (id === null) return null;
+    const st = stationById.get(id);
+    if (st?.kind === "bar" && areaBar && stationById.has(areaBar)) return areaBar;
+    return id;
+  };
   const roundNo = session.orders.length + 1;
   const tableName = session.table ? session.table.name : session.label ?? `#${session.id}`;
   const now = new Date();
@@ -104,7 +112,7 @@ export async function sendRound(sessionId: number, cart: CartLine[], employeeId:
         if (!m) throw new Error(`Μη έγκυρη επιλογή για «${p.name}»`);
         return m;
       });
-      const stationId = await stationForProduct(p);
+      const stationId = resolveStation(await stationForProduct(p));
       const [item] = await tx
         .insert(schema.orderItems)
         .values({
@@ -408,6 +416,18 @@ export async function bumpOrder(orderId: number, stationId?: number | null) {
     emit({ type: "session.changed", sessionId: o.sessionId });
     await refreshSessionReadiness(o.sessionId);
   }
+}
+
+/** Όλα τα είδη μιας συνεδρίας γίνονται «έτοιμα» (π.χ. από το ταμείο, για ειδοποίηση πελάτη QR). */
+export async function markSessionReady(sessionId: number) {
+  const db = await getDb();
+  await db
+    .update(schema.orderItems)
+    .set({ status: "ready", readyAt: new Date() })
+    .where(and(eq(schema.orderItems.sessionId, sessionId), inArray(schema.orderItems.status, ["sent", "preparing"])));
+  emit({ type: "kds.changed" });
+  emit({ type: "session.changed", sessionId });
+  await refreshSessionReadiness(sessionId);
 }
 
 export async function markServed(sessionId: number) {

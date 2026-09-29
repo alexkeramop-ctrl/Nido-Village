@@ -6,7 +6,7 @@ import type { EmployeeRole } from "@/db/schema";
 import { bumpOrder, setItemStatus } from "@/server/services/ordering";
 
 /** Το KDS το χρησιμοποιεί κάθε συνδεδεμένος ρόλος. */
-const ROLES: EmployeeRole[] = ["kitchen", "waiter", "cashier", "manager", "admin"];
+const ROLES: EmployeeRole[] = ["manager", "admin"];
 
 export async function setItemStatusAction(itemId: number, status: "preparing" | "ready" | "served"): Promise<ActionResult> {
   return run(async () => {

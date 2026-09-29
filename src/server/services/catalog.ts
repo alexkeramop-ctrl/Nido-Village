@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { emit } from "@/server/events";
 
@@ -224,4 +224,51 @@ export async function loadProductsForOrder(ids: number[]) {
     where: and(inArray(schema.products.id, ids), eq(schema.products.active, true)),
     with: { category: true, vatRate: true },
   });
+}
+
+/** Διαγραφή κατηγορίας: επιτρέπεται μόνο αν δεν έχει είδη (ενεργά ή ανενεργά). */
+export async function deleteCategory(id: number) {
+  const db = await getDb();
+  const n = await db.select({ n: sql<number>`count(*)::int` }).from(schema.products).where(eq(schema.products.categoryId, id));
+  if ((n[0]?.n ?? 0) > 0) throw new Error("Η κατηγορία έχει είδη. Διάγραψε ή μετακίνησε πρώτα τα είδη της.");
+  await db.delete(schema.categories).where(eq(schema.categories.id, id));
+  emit({ type: "catalog.changed" });
+}
+
+/**
+ * Διαγραφή είδους. Αν έχει πουληθεί ποτέ, απλώς απενεργοποιείται (τα ιστορικά στοιχεία το χρειάζονται)·
+ * αλλιώς διαγράφεται πλήρως μαζί με συνταγή και ομάδες επιλογών.
+ */
+export async function deleteProduct(id: number): Promise<"deleted" | "archived"> {
+  const db = await getDb();
+  const sold = await db.select({ n: sql<number>`count(*)::int` }).from(schema.orderItems).where(eq(schema.orderItems.productId, id));
+  if ((sold[0]?.n ?? 0) > 0) {
+    await db.update(schema.products).set({ active: false, available: false }).where(eq(schema.products.id, id));
+    emit({ type: "catalog.changed" });
+    return "archived";
+  }
+  await db.transaction(async (tx) => {
+    await tx.delete(schema.recipeLines).where(eq(schema.recipeLines.productId, id));
+    await tx.delete(schema.productModifierGroups).where(eq(schema.productModifierGroups.productId, id));
+    await tx.delete(schema.products).where(eq(schema.products.id, id));
+  });
+  emit({ type: "catalog.changed" });
+  return "deleted";
+}
+
+/** Διαγραφή ομάδας επιλογών (αφαιρείται από τα είδη· οι επιλογές που έχουν πουληθεί μένουν στο ιστορικό ως κείμενο). */
+export async function deleteModifierGroup(id: number) {
+  const db = await getDb();
+  await db.transaction(async (tx) => {
+    const mods = await tx.query.modifiers.findMany({ where: eq(schema.modifiers.groupId, id) });
+    const ids = mods.map((m) => m.id);
+    if (ids.length) {
+      await tx.delete(schema.recipeLines).where(inArray(schema.recipeLines.modifierId, ids));
+      await tx.update(schema.orderItemModifiers).set({ modifierId: null }).where(inArray(schema.orderItemModifiers.modifierId, ids));
+      await tx.delete(schema.modifiers).where(inArray(schema.modifiers.id, ids));
+    }
+    await tx.delete(schema.productModifierGroups).where(eq(schema.productModifierGroups.groupId, id));
+    await tx.delete(schema.modifierGroups).where(eq(schema.modifierGroups.id, id));
+  });
+  emit({ type: "catalog.changed" });
 }

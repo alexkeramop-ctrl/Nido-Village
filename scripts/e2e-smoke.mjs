@@ -43,9 +43,9 @@ try {
   // add Coca-Cola (no modifiers) and a steak with modifier
   await p.getByRole("button", { name: /Αναψυκτικά/ }).click().catch(() => {});
   await p.getByRole("button", { name: /Coca-Cola 330ml/ }).first().click();
-  await p.getByRole("button", { name: /Κυρίως/ }).click().catch(() => {});
-  await p.getByRole("button", { name: /Μπριζόλα χοιρινή/ }).first().click();
-  await p.getByRole("button", { name: "Μέτριο", exact: true }).click().catch(() => {});
+  await p.getByRole("button", { name: /Burger/ }).click().catch(() => {});
+  await p.getByRole("button", { name: /Classic Burger/ }).first().click();
+  await p.getByRole("button", { name: "Extra τυρί", exact: true }).click().catch(() => {});
   await p.getByRole("button", { name: /Προσθήκη/ }).click().catch(() => {});
   await shot(p, "03-pda-cart");
   const cartBtn = p.getByRole("button", { name: /Καλάθι/ });
@@ -55,14 +55,14 @@ try {
   await checkNoError(p, "/pda/s after send");
   await shot(p, "04-pda-sent");
   const sentText = await p.locator("body").innerText();
-  if (!sentText.includes("Μπριζόλα χοιρινή")) errors.push("PDA: sent item not visible");
+  if (!sentText.includes("Classic Burger")) errors.push("PDA: sent item not visible");
   await phone.close();
 
   // Kitchen on tablet
   const tab = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: "el-GR" });
   const k = await tab.newPage();
   k.on("pageerror", (e) => errors.push("kds pageerror: " + e.message));
-  await loginPin(k, "3333");
+  await loginPin(k, "4444");
   await k.goto(`${BASE}/kds`);
   await checkNoError(k, "/kds");
   await shot(k, "05-kds");
@@ -105,11 +105,11 @@ try {
   q.on("console", (m) => { if (m.type() === "error") errors.push("order console: " + m.text()); });
   await q.goto(`${BASE}/order`, { waitUntil: "networkidle" });
   await checkNoError(q, "/order");
-  await q.getByRole("button", { name: /Κυρίως/ }).first().click();
+  await q.getByRole("button", { name: /Burger/ }).first().click();
   await q.waitForTimeout(400);
-  await q.getByRole("button", { name: /Μπριζόλα χοιρινή/ }).first().click();
-  await q.getByRole("button", { name: "Μέτριο", exact: true }).waitFor({ timeout: 10000 });
-  await q.getByRole("button", { name: "Μέτριο", exact: true }).click();
+  await q.getByRole("button", { name: /Classic Burger/ }).first().click();
+  await q.getByRole("button", { name: "Extra τυρί", exact: true }).waitFor({ timeout: 10000 });
+  await q.getByRole("button", { name: "Extra τυρί", exact: true }).click();
   await q.getByRole("button", { name: /^Προσθήκη/ }).click();
   await q.getByRole("button", { name: /Coca-Cola 330ml/ }).first().click();
   await q.waitForTimeout(300);
@@ -130,7 +130,7 @@ try {
   await shot(q, "13-order-status");
 
   const kq = await (await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: "el-GR" })).newPage();
-  await loginPin(kq, "3333");
+  await loginPin(kq, "4444");
   await kq.goto(`${BASE}/kds`, { waitUntil: "networkidle" });
   const ticket = kq.locator("article", { hasText: `#${code}` });
   if (!(await ticket.count())) errors.push("KDS: QR ticket not visible");

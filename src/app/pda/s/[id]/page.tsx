@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 
 /** PDA: οθόνη παραγγελίας ενός τραπεζιού / πακέτου. */
 export default async function SessionPage({ params }: { params: Promise<{ id: string }> }) {
-  const user = await requirePageUser("waiter", "cashier", "manager", "admin");
+  const user = await requirePageUser("kitchen", "waiter", "cashier", "manager", "admin");
   const { id } = await params;
   const sessionId = Number(id);
   const detail = Number.isInteger(sessionId) && sessionId > 0 ? await getSessionDetail(sessionId) : null;

@@ -5,8 +5,8 @@ import { logoutAction } from "@/app/login/actions";
 import { Mark } from "@/components/brand";
 
 const NAV: { href: string; label: string; roles: string[] }[] = [
-  { href: "/pda", label: "PDA", roles: ["waiter", "cashier", "manager", "admin"] },
-  { href: "/kds", label: "Κουζίνα", roles: ["kitchen", "waiter", "manager", "admin"] },
+  { href: "/pda", label: "Παραγγελίες", roles: ["kitchen", "waiter", "cashier", "manager", "admin"] },
+  { href: "/kds", label: "Ενεργές", roles: ["manager", "admin"] },
   { href: "/cashier", label: "Ταμείο", roles: ["cashier", "manager", "admin"] },
   { href: "/admin", label: "Διαχείριση", roles: ["manager", "admin"] },
 ];

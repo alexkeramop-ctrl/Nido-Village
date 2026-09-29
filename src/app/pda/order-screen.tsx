@@ -104,6 +104,7 @@ export function OrderScreen({ session, menu, courses, freeTables }: { session: S
 
   const cartPanel = (
     <CartPanel
+      showCourse={courses > 1}
       cart={cart}
       count={cartCount}
       total={cartTotal}
@@ -206,7 +207,7 @@ export function OrderScreen({ session, menu, courses, freeTables }: { session: S
                   {r.notes && <div className="text-xs italic text-warn mb-1">Σημ.: {r.notes}</div>}
                   <ul className="space-y-2">
                     {r.items.map((i) => (
-                      <SentItem key={i.id} item={i} onVoid={() => setVoidTarget(i)} />
+                      <SentItem key={i.id} item={i} showCourse={courses > 1} onVoid={() => setVoidTarget(i)} />
                     ))}
                   </ul>
                 </div>
@@ -343,6 +344,7 @@ export function OrderScreen({ session, menu, courses, freeTables }: { session: S
 /* ------------------------------- Καλάθι ------------------------------- */
 
 function CartPanel({
+  showCourse = true,
   cart,
   count,
   total,
@@ -353,6 +355,7 @@ function CartPanel({
   onSend,
   pending,
 }: {
+  showCourse?: boolean;
   cart: UiLine[];
   count: number;
   total: number;
@@ -391,7 +394,7 @@ function CartPanel({
                 {l.modifiers.length > 0 && <div className="text-xs text-ink-2">{l.modifiers.map((m) => m.name).join(", ")}</div>}
                 {l.notes && <div className="text-xs italic text-warn">{l.notes}</div>}
                 <div className="mt-1 flex items-center gap-2">
-                  <Badge>{courseLabel(l.course)}</Badge>
+                  {showCourse && <Badge>{courseLabel(l.course)}</Badge>}
                   <Money cents={lineTotal(l)} className="text-sm text-ink-2" />
                 </div>
               </div>
@@ -416,7 +419,7 @@ function CartPanel({
 
 /* ---------------------------- Σταλμένο είδος --------------------------- */
 
-function SentItem({ item, onVoid }: { item: SessionItemDto; onVoid: () => void }) {
+function SentItem({ item, onVoid, showCourse = true }: { item: SessionItemDto; onVoid: () => void; showCourse?: boolean }) {
   const voided = item.status === "voided";
   const strike = voided ? "line-through" : "";
   return (
@@ -429,7 +432,7 @@ function SentItem({ item, onVoid }: { item: SessionItemDto; onVoid: () => void }
         {voided && item.voidReason && <div className="text-xs text-danger">Αιτία: {item.voidReason}</div>}
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
           <Badge tone={ITEM_STATUS_TONE[item.status]}>{ITEM_STATUS_LABEL[item.status]}</Badge>
-          <Badge>{courseLabel(item.course)}</Badge>
+          {showCourse && <Badge>{courseLabel(item.course)}</Badge>}
         </div>
       </div>
       <div className="flex flex-col items-end gap-1 shrink-0">
@@ -522,16 +525,18 @@ function ProductModal({
               </button>
             </div>
           </div>
-          <div>
-            <span className="label">Πιάτο</span>
-            <div className="flex gap-1">
-              {Array.from({ length: courses }, (_, i) => i + 1).map((c) => (
-                <button key={c} type="button" onClick={() => setCourse(c)} className={`${course === c ? "btn-primary" : "btn-secondary"} btn-sm flex-1 px-0`}>
-                  {c}ο
-                </button>
-              ))}
+          {courses > 1 && (
+            <div>
+              <span className="label">Πιάτο (σειρά σερβιρίσματος)</span>
+              <div className="flex gap-1">
+                {Array.from({ length: courses }, (_, i) => i + 1).map((c) => (
+                  <button key={c} type="button" onClick={() => setCourse(c)} className={`${course === c ? "btn-primary" : "btn-secondary"} btn-sm flex-1 px-0`}>
+                    {c}ο
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         <Field label="Σημείωση">
