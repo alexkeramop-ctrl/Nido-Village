@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useSyncExternalStore, useTransition } from "react";
 import { Badge, EmptyState, Field, Modal, Money, useToast } from "@/components/ui";
-import { FloorMap, isPlaced, type FloorMapImage, type FloorMapTable } from "@/components/floor-map";
+import { ZoomableFloorMap, isPlaced, type FloorMapImage, type FloorMapTable } from "@/components/floor-map";
 import { formatEuro } from "@/server/money";
 import type { TableShape } from "@/db/schema";
 import { openTableAction, openTakeawayAction } from "./actions";
@@ -72,8 +72,6 @@ function useFloorView(): View {
   return useSyncExternalStore(subscribeView, readView, () => "map");
 }
 
-const ZOOMS = [1, 1.5, 2, 3];
-
 /* ------------------------------ Κάρτες λίστας ------------------------------ */
 
 function StatusChip({ status }: { status: "open" | "billed" }) {
@@ -128,7 +126,6 @@ export function FloorScreen({ areas, takeaway }: { areas: FloorAreaDto[]; takeaw
   const [areaId, setAreaId] = useState<number | null>(areas[0]?.id ?? null);
   const [pendingTable, setPendingTable] = useState<number | null>(null);
   const [pkgOpen, setPkgOpen] = useState(false);
-  const [zoom, setZoom] = useState(1);
   const [pending, start] = useTransition();
   const { toast, element } = useToast();
   const view = useFloorView();
@@ -167,8 +164,6 @@ export function FloorScreen({ areas, takeaway }: { areas: FloorAreaDto[]; takeaw
     if (t.session) router.push(`/pda/s/${t.session.id}`);
     else if (!pending) openTable(t.id);
   };
-
-  const zoomStep = (dir: 1 | -1) => setZoom((z) => ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, ZOOMS.indexOf(z) + dir))]);
 
   return (
     <main className="flex-1 p-3 sm:p-4 space-y-4 max-w-7xl w-full mx-auto">
@@ -213,29 +208,19 @@ export function FloorScreen({ areas, takeaway }: { areas: FloorAreaDto[]; takeaw
 
           {showMap ? (
             <div data-floor-view="map">
-              <div className="-mx-3 px-3 sm:mx-0 sm:px-0 overflow-x-auto overflow-y-hidden">
-                <div style={{ width: `${zoom * 100}%` }} className="min-w-full">
-                  <FloorMap areaImage={area.image} tables={markers} onTap={tapTable} maxWidth={900 * zoom} />
-                </div>
-              </div>
-              <div className="flex items-start justify-between gap-3 mt-2">
-                <p className="text-xs text-ink-3 min-w-0">
-                  {unplaced.length > 0 && (
+              <ZoomableFloorMap
+                key={area.id}
+                areaImage={area.image}
+                tables={markers}
+                onTap={tapTable}
+                footer={
+                  unplaced.length > 0 ? (
                     <>
                       Χωρίς θέση: {unplaced.map((t) => t.name).join(", ")} <span className="text-ink-3/70">(στη λίστα)</span>
                     </>
-                  )}
-                </p>
-                <div className="inline-flex items-center gap-1 shrink-0 touch" aria-label="Μεγέθυνση χάρτη">
-                  <button type="button" className="btn-secondary btn-sm px-3" onClick={() => zoomStep(-1)} disabled={zoom === ZOOMS[0]} aria-label="Σμίκρυνση">
-                    −
-                  </button>
-                  <span className="text-xs text-ink-3 num w-8 text-center">{zoom}×</span>
-                  <button type="button" className="btn-secondary btn-sm px-3" onClick={() => zoomStep(1)} disabled={zoom === ZOOMS[ZOOMS.length - 1]} aria-label="Μεγέθυνση">
-                    +
-                  </button>
-                </div>
-              </div>
+                  ) : null
+                }
+              />
             </div>
           ) : (
             <div data-floor-view="list" className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">

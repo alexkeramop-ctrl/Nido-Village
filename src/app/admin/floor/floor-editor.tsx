@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { Badge, EmptyState, Field } from "@/components/ui";
 import { PageHeader, Section, useActionRunner } from "@/components/admin/common";
-import { FloorMap, isPlaced, type FloorMapImage, type FloorMapTable } from "@/components/floor-map";
+import { ZoomableFloorMap, isPlaced, type FloorMapImage, type FloorMapTable } from "@/components/floor-map";
 import type { TableShape } from "@/db/schema";
 import { autoLayoutAction, removeAreaMapAction, saveTablePositionsAction, uploadAreaMapAction } from "./actions";
 
@@ -232,12 +232,20 @@ export function FloorEditor({ areas }: { areas: EditorArea[] }) {
               }
             >
               <div className="p-3 sm:p-4">
-                <FloorMap areaImage={area.image} tables={markers} editable onMove={(id, x, y) => edit(id, { posX: x, posY: y })} onTap={setSelectedId} selectedId={selectedId} />
-                <p className="text-xs text-ink-3 mt-2">
-                  {area.image
-                    ? `${placedTables.length} από ${tables.length} τραπέζια στον χάρτη · εικόνα έως 3MB (JPEG, PNG, WebP, SVG).`
-                    : "Δεν υπάρχει εικόνα χάρτη. Ανέβασε μια φωτογραφία ή κάτοψη με το κουμπί «Εικόνα χάρτη» (έως 3MB)."}
-                </p>
+                <ZoomableFloorMap
+                  key={area.id}
+                  areaImage={area.image}
+                  tables={markers}
+                  editable
+                  onMove={(id, x, y) => edit(id, { posX: x, posY: y })}
+                  onTap={setSelectedId}
+                  selectedId={selectedId}
+                  footer={
+                    area.image
+                      ? `${placedTables.length} από ${tables.length} τραπέζια στον χάρτη · εικόνα έως 3MB (JPEG, PNG, WebP, SVG).`
+                      : "Δεν υπάρχει εικόνα χάρτη. Ανέβασε μια φωτογραφία ή κάτοψη με το κουμπί «Εικόνα χάρτη» (έως 3MB)."
+                  }
+                />
               </div>
             </Section>
 

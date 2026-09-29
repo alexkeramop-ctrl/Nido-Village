@@ -202,13 +202,90 @@ export function FloorMap({ areaImage, tables, onTap, editable = false, onMove, s
               </span>
             )}
             {t.sub && (
-              <span className="truncate max-w-full num font-semibold @max-[44px]:hidden" style={{ fontSize: `clamp(8px, ${wide ? 11 : 22}cqw, 14px)` }}>
+              <span className="truncate max-w-full num font-semibold @max-[32px]:hidden" style={{ fontSize: `clamp(8px, ${wide ? 11 : 22}cqw, 14px)` }}>
                 {t.sub}
               </span>
             )}
           </button>
         );
       })}
+    </div>
+  );
+}
+
+/* ------------------------- Χάρτης με ζουμ και κύλιση ------------------------- */
+
+const ZOOMS = [1, 1.5, 2, 2.5, 3];
+/** Ελάχιστο «φυσικό» πλάτος μαρκαδόρου (px) που επιδιώκει το αυτόματο ζουμ. */
+const MIN_MARKER_PX = 30;
+
+/**
+ * Τυλίγει τον FloorMap σε οριζόντια κυλιόμενο πλαίσιο με κουμπιά ζουμ.
+ * Το αρχικό ζουμ επιλέγεται αυτόματα ώστε οι μαρκαδόροι να μένουν ευανάγνωστοι και διακριτοί
+ * (π.χ. σε κινητό, όπου ο χάρτης είναι στενός) και ο χάρτης κυλά στο κέντρο των τραπεζιών.
+ */
+export function ZoomableFloorMap({ footer, ...props }: Props & { footer?: ReactNode }) {
+  const { tables, areaImage, maxWidth = 900, markerPct } = props;
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const tablesRef = useRef(tables);
+  const [wrapWidth, setWrapWidth] = useState<number | null>(null);
+  const [zoom, setZoom] = useState<number | null>(null); // null = αυτόματο
+
+  useEffect(() => {
+    tablesRef.current = tables;
+  });
+
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width;
+      if (w) setWrapWidth(w);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const ratio = (areaImage?.height || 3) / (areaImage?.width || 4);
+  const pct = markerPct ?? autoMarkerPct(tables, ratio);
+  const autoZoom = useMemo(() => {
+    if (!wrapWidth) return 1;
+    for (const z of ZOOMS) if ((pct / 100) * Math.min(wrapWidth, maxWidth) * z >= MIN_MARKER_PX) return z;
+    return ZOOMS[ZOOMS.length - 1];
+  }, [wrapWidth, pct, maxWidth]);
+  const z = zoom ?? autoZoom;
+  const tablesKey = tables.map((t) => t.id).join(",");
+
+  // Στο αυτόματο ζουμ: οριζόντια κύλιση ώστε να φαίνεται το κέντρο των τραπεζιών.
+  useEffect(() => {
+    const el = wrapRef.current;
+    const list = tablesRef.current;
+    if (!el || zoom !== null || z === 1 || !list.length) return;
+    const cx = list.reduce((s, t) => s + t.posX, 0) / list.length / 1000;
+    el.scrollLeft = Math.max(0, cx * el.scrollWidth - el.clientWidth / 2);
+  }, [z, zoom, tablesKey]);
+
+  const step = (dir: 1 | -1) => setZoom(ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, ZOOMS.indexOf(z) + dir))]);
+
+  return (
+    <div>
+      <div ref={wrapRef} className="w-full overflow-x-auto overflow-y-hidden">
+        <div style={{ width: `${z * 100}%` }} className="min-w-full">
+          <FloorMap {...props} maxWidth={maxWidth * z} markerPct={pct} />
+        </div>
+      </div>
+      <div className="flex items-start justify-between gap-3 mt-2">
+        <div className="min-w-0 text-xs text-ink-3">{footer}</div>
+        <div className="inline-flex items-center gap-1 shrink-0 touch" role="group" aria-label="Ζουμ χάρτη">
+          <button type="button" className="btn-secondary btn-sm px-3" onClick={() => step(-1)} disabled={z === ZOOMS[0]} aria-label="Σμίκρυνση">
+            −
+          </button>
+          <span className="text-xs text-ink-3 num w-9 text-center">{z}×</span>
+          <button type="button" className="btn-secondary btn-sm px-3" onClick={() => step(1)} disabled={z === ZOOMS[ZOOMS.length - 1]} aria-label="Μεγέθυνση">
+            +
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
