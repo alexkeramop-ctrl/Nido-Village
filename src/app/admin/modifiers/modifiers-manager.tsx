@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Badge, EmptyState, Field, Money } from "@/components/ui";
 import { FormModal, PageHeader, Section, Toggle, formValues, useActionRunner } from "@/components/admin/common";
 import { centsToInput } from "@/components/admin/format";
-import { saveGroupAction, saveModifierAction } from "./actions";
+import { deleteGroupAction, saveGroupAction, saveModifierAction } from "./actions";
 
 type Modifier = { id: number; groupId: number; name: string; priceDeltaCents: number; sort: number; active: boolean };
 type Group = { id: number; name: string; minSelect: number; maxSelect: number; active: boolean; modifiers: Modifier[] };
@@ -34,6 +34,11 @@ export function ModifiersManager({ groups }: { groups: Group[] }) {
       success: id ? "Η επιλογή ενημερώθηκε" : "Η επιλογή προστέθηκε",
       onSuccess: () => setModModal(null),
     });
+  };
+
+  const removeGroup = (g: Group) => {
+    if (!confirm(`Διαγραφή της ομάδας «${g.name}» μαζί με τις ${g.modifiers.length} επιλογές της; Θα αφαιρεθεί από όλα τα είδη.`)) return;
+    run(() => deleteGroupAction(g.id), { success: `Η ομάδα «${g.name}» διαγράφηκε` });
   };
 
   const editingGroup = groupModal?.mode === "edit" ? groupModal.group : null;
@@ -71,6 +76,9 @@ export function ModifiersManager({ groups }: { groups: Group[] }) {
                 <>
                   <button className="btn-ghost btn-sm" onClick={() => setGroupModal({ mode: "edit", group: g })}>
                     Επεξεργασία
+                  </button>
+                  <button className="btn-ghost btn-sm text-danger" onClick={() => removeGroup(g)} disabled={pending} aria-label={`Διαγραφή ${g.name}`}>
+                    Διαγραφή
                   </button>
                   <button className="btn-secondary btn-sm" onClick={() => setModModal({ mode: "new", groupId: g.id })}>
                     + Επιλογή

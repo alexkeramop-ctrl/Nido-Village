@@ -56,6 +56,12 @@ export default async function InventoryPage({ searchParams }: { searchParams: Pr
     supplierId: i.supplierId,
     supplierName: i.supplier?.name ?? null,
     active: i.active,
+    packSize: i.packSize,
+    packName: i.packName,
+    portionQty: i.portionQty,
+    portionName: i.portionName,
+    stockPacks: i.stockPacks,
+    stockPortions: i.stockPortions,
   }));
   const suppliers = suppliersRaw.map((s) => ({ id: s.id, name: s.name, vatNumber: s.vatNumber, phone: s.phone, email: s.email, notes: s.notes, active: s.active }));
   const units = Object.entries(UNIT_LABEL).map(([value, label]) => ({ value, label }));
@@ -128,6 +134,13 @@ export default async function InventoryPage({ searchParams }: { searchParams: Pr
           sold: r.sold,
           waste: r.waste,
           countDiff: r.countDiff,
+          soldPortions: r.soldPortions,
+          countDiffPortions: r.countDiffPortions,
+          countDiffCents: r.countDiffCents,
+          portionQty: r.ingredient.portionQty,
+          portionName: r.ingredient.portionName,
+          packSize: r.ingredient.packSize,
+          packName: r.ingredient.packName,
         }))}
       />
     );

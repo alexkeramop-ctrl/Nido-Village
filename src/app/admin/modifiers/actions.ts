@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { run } from "@/server/action";
 import { requireRole } from "@/server/auth";
 import { parseEuroToCents } from "@/server/money";
-import { upsertModifier, upsertModifierGroup } from "@/server/services/catalog";
+import { deleteModifierGroup, upsertModifier, upsertModifierGroup } from "@/server/services/catalog";
 
 export async function saveGroupAction(input: { id?: number; name: string; minSelect: number; maxSelect: number; active: boolean }) {
   return run(async () => {
@@ -29,5 +29,18 @@ export async function saveModifierAction(input: { id?: number; groupId: number; 
     });
     revalidatePath("/admin/modifiers");
     revalidatePath("/admin/recipes");
+  });
+}
+
+/** Διαγραφή ομάδας επιλογών μαζί με τις επιλογές της· αφαιρείται από τα είδη. */
+export async function deleteGroupAction(id: number) {
+  return run(async () => {
+    await requireRole("manager", "admin");
+    if (!Number.isInteger(id) || id <= 0) throw new Error("Μη έγκυρη ομάδα");
+    await deleteModifierGroup(id);
+    revalidatePath("/admin/modifiers");
+    revalidatePath("/admin/menu");
+    revalidatePath("/admin/recipes");
+    revalidatePath("/pda");
   });
 }

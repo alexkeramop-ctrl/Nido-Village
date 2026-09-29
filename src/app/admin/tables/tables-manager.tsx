@@ -5,12 +5,13 @@ import { FormModal, PageHeader, Section, Toggle, formValues, useActionRunner } f
 import { createTablesBatchAction, saveAreaAction, saveTableAction } from "./actions";
 
 type Table = { id: number; areaId: number; name: string; seats: number; sort: number; active: boolean };
-type Area = { id: number; name: string; sort: number; active: boolean; tables: Table[] };
+type Area = { id: number; name: string; sort: number; active: boolean; barStationId: number | null; barName: string | null; tables: Table[] };
+type Bar = { id: number; name: string };
 
 type AreaModal = { mode: "new" } | { mode: "edit"; area: Area } | null;
 type TableModal = { mode: "new"; areaId: number } | { mode: "edit"; table: Table } | null;
 
-export function TablesManager({ areas }: { areas: Area[] }) {
+export function TablesManager({ areas, bars }: { areas: Area[]; bars: Bar[] }) {
   const { run, pending, toast, toastElement } = useActionRunner();
   const [areaModal, setAreaModal] = useState<AreaModal>(null);
   const [tableModal, setTableModal] = useState<TableModal>(null);
@@ -19,7 +20,7 @@ export function TablesManager({ areas }: { areas: Area[] }) {
   const submitArea = (fd: FormData) => {
     const v = formValues(fd);
     const id = areaModal?.mode === "edit" ? areaModal.area.id : undefined;
-    run(() => saveAreaAction({ id, name: v.str("name"), sort: v.int("sort"), active: v.bool("active") }), {
+    run(() => saveAreaAction({ id, name: v.str("name"), sort: v.int("sort"), active: v.bool("active"), barStationId: v.intOrNull("barStationId") }), {
       success: id ? "Ο χώρος ενημερώθηκε" : "Ο χώρος δημιουργήθηκε",
       onSuccess: () => setAreaModal(null),
     });
@@ -77,7 +78,7 @@ export function TablesManager({ areas }: { areas: Area[] }) {
                   {a.name}
                   {!a.active && <Badge>Ανενεργός</Badge>}
                   <span className="text-xs font-normal text-ink-3 num">
-                    σειρά {a.sort} · {a.tables.length} τραπέζια
+                    σειρά {a.sort} · {a.tables.length} τραπέζια · μπαρ: {a.barName ?? "—"}
                   </span>
                 </span>
               }
@@ -124,6 +125,16 @@ export function TablesManager({ areas }: { areas: Area[] }) {
         </Field>
         <Field label="Σειρά">
           <input name="sort" type="number" className="input num" defaultValue={editingArea?.sort ?? areas.length + 1} />
+        </Field>
+        <Field label="Μπαρ χώρου" hint="Τα ροφήματα των τραπεζιών αυτού του χώρου τυπώνονται σε αυτό το μπαρ.">
+          <select name="barStationId" className="input" defaultValue={editingArea?.barStationId ?? ""}>
+            <option value="">— κανένα —</option>
+            {bars.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
         </Field>
         <Toggle name="active" defaultChecked={editingArea?.active ?? true} label="Ενεργός" />
       </FormModal>

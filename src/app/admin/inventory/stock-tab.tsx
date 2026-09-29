@@ -2,14 +2,14 @@
 import { useMemo, useState } from "react";
 import { Badge, EmptyState, Field, Money } from "@/components/ui";
 import { FormModal, Section, TableWrap, Toggle, formValues, useActionRunner } from "@/components/admin/common";
-import { euroToInput, fmtQty } from "@/components/admin/format";
-import { adjustStockAction, recordWasteAction, saveIngredientAction } from "./actions";
+import { euroToInput, fmtPacks, fmtQty } from "@/components/admin/format";
+import { adjustStockAction, deleteIngredientAction, recordWasteAction, saveIngredientAction } from "./actions";
 import type { Ingredient, Supplier } from "./types";
 
 type EditModal = { mode: "new" } | { mode: "edit"; ing: Ingredient } | null;
 
 export function StockTab({ ingredients, suppliers, units }: { ingredients: Ingredient[]; suppliers: Supplier[]; units: { value: string; label: string }[] }) {
-  const { run, pending, toastElement } = useActionRunner();
+  const { run, pending, toast, toastElement } = useActionRunner();
   const [editModal, setEditModal] = useState<EditModal>(null);
   const [wasteFor, setWasteFor] = useState<Ingredient | null>(null);
   const [adjustFor, setAdjustFor] = useState<Ingredient | null>(null);
@@ -36,9 +36,20 @@ export function StockTab({ ingredients, suppliers, units }: { ingredients: Ingre
           costPerUnit: v.num("costPerUnit"),
           supplierId: v.intOrNull("supplierId"),
           active: v.bool("active"),
+          packSize: v.num("packSize") || null,
+          packName: v.strOrNull("packName"),
+          portionQty: v.num("portionQty") || null,
+          portionName: v.strOrNull("portionName"),
         }),
       { success: id ? "Η πρώτη ύλη ενημερώθηκε" : "Η πρώτη ύλη δημιουργήθηκε", onSuccess: () => setEditModal(null) },
     );
+  };
+
+  const remove = (i: Ingredient) => {
+    if (!confirm(`Διαγραφή της πρώτης ύλης «${i.name}»; Αν έχει ιστορικό κινήσεων ή παραλαβών, θα απενεργοποιηθεί και θα αφαιρεθεί από τις συνταγές.`)) return;
+    run(() => deleteIngredientAction(i.id), {
+      onSuccess: (result) => toast(result === "archived" ? `Η πρώτη ύλη «${i.name}» έχει ιστορικό, απενεργοποιήθηκε` : `Η πρώτη ύλη «${i.name}» διαγράφηκε`),
+    });
   };
 
   const submitWaste = (fd: FormData) => {
@@ -115,6 +126,16 @@ export function StockTab({ ingredients, suppliers, units }: { ingredients: Ingre
                         <Badge tone="danger">Χαμηλό</Badge>
                       </span>
                     )}
+                    {(i.stockPacks !== null || i.stockPortions !== null) && (
+                      <div className="text-xs text-ink-3 num whitespace-nowrap">
+                        {[
+                          i.stockPacks !== null ? fmtPacks(i.stockPacks, i.packName ?? "συσκευασία") : null,
+                          i.stockPortions !== null ? fmtPacks(i.stockPortions, i.portionName ?? "μερίδα") : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </div>
+                    )}
                   </td>
                   <td className="text-right num text-ink-2">{fmtQty(i.min)}</td>
                   <td className="text-right num text-ink-2">{euroToInput(i.cost)} €</td>
@@ -131,6 +152,9 @@ export function StockTab({ ingredients, suppliers, units }: { ingredients: Ingre
                     </button>
                     <button className="btn-ghost btn-sm" onClick={() => setEditModal({ mode: "edit", ing: i })}>
                       Επεξεργασία
+                    </button>
+                    <button className="btn-ghost btn-sm text-danger" onClick={() => remove(i)} disabled={pending} aria-label={`Διαγραφή ${i.name}`}>
+                      Διαγραφή
                     </button>
                   </td>
                 </tr>
@@ -175,6 +199,24 @@ export function StockTab({ ingredients, suppliers, units }: { ingredients: Ingre
             ))}
           </select>
         </Field>
+        <fieldset className="rounded-xl border border-line p-3 space-y-3">
+          <legend className="label px-1">Συσκευασία &amp; μερίδα (προαιρετικά)</legend>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Μέγεθος συσκευασίας" hint="σε μονάδες της πρώτης ύλης">
+              <input name="packSize" className="input num" inputMode="decimal" defaultValue={editing?.packSize ? fmtQty(editing.packSize) : ""} placeholder="π.χ. 700" />
+            </Field>
+            <Field label="Όνομα συσκευασίας">
+              <input name="packName" className="input" defaultValue={editing?.packName ?? ""} placeholder="μπουκάλι" />
+            </Field>
+            <Field label="Ποσότητα μερίδας" hint="σε μονάδες της πρώτης ύλης">
+              <input name="portionQty" className="input num" inputMode="decimal" defaultValue={editing?.portionQty ? fmtQty(editing.portionQty) : ""} placeholder="π.χ. 60" />
+            </Field>
+            <Field label="Όνομα μερίδας">
+              <input name="portionName" className="input" defaultValue={editing?.portionName ?? ""} placeholder="ποτό" />
+            </Field>
+          </div>
+          <p className="text-xs text-ink-3">π.χ. μπουκάλι 700 ml, ποτό 60 ml → 11 ποτά ανά μπουκάλι. Επιτρέπει απογραφή σε συσκευασίες και αναφορές σε μερίδες.</p>
+        </fieldset>
         {editing && <p className="text-xs text-ink-3">Τρέχον απόθεμα: {fmtQty(editing.stock)} {editing.unitLabel}. Για αλλαγή αποθέματος χρησιμοποίησε «Διόρθωση» ή «Απογραφή».</p>}
         <Toggle name="active" defaultChecked={editing?.active ?? true} label="Ενεργή" />
       </FormModal>

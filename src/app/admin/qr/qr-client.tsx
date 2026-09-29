@@ -6,7 +6,7 @@ import { InfoBox, PageHeader, Section, TableWrap, useActionRunner } from "@/comp
 import { fmtDateTime } from "@/components/admin/format";
 import { QR_STATUS_LABEL, QR_STATUS_TONE } from "@/components/qr/labels";
 import type { PublicOrderStatus } from "@/server/services/public-order";
-import { markPickedUpAction } from "./actions";
+import { markPickedUpAction, markReadyAction } from "./actions";
 
 export type QrOrderRow = {
   sessionId: number;
@@ -48,6 +48,7 @@ export function QrClient({ venueName, orderUrl, pickupUrl, qrDataUrl, orders }: 
   };
 
   const pickedUp = (row: QrOrderRow) => run(() => markPickedUpAction(row.sessionId), { success: `Η #${row.code} σημειώθηκε ως παραδοθείσα` });
+  const markReady = (row: QrOrderRow) => run(() => markReadyAction(row.sessionId), { success: `Η #${row.code} σημειώθηκε ως έτοιμη — ειδοποιήθηκε ο πελάτης` });
 
   return (
     <div className="space-y-4">
@@ -148,6 +149,7 @@ export function QrClient({ venueName, orderUrl, pickupUrl, qrDataUrl, orders }: 
             <tbody>
               {orders.map((o) => {
                 const open = o.status === "received" || o.status === "preparing" || o.status === "ready";
+                const canReady = o.status === "received" || o.status === "preparing";
                 return (
                   <tr key={o.sessionId} data-testid={`qr-order-${o.code}`}>
                     <td className="font-bold num">#{o.code}</td>
@@ -160,9 +162,20 @@ export function QrClient({ venueName, orderUrl, pickupUrl, qrDataUrl, orders }: 
                     <td className="text-right">
                       <Money cents={o.totalCents} className="font-semibold" />
                     </td>
-                    <td className="text-right">
+                    <td className="text-right whitespace-nowrap">
+                      {canReady && (
+                        <button
+                          type="button"
+                          className="btn btn-sm bg-ok text-white hover:bg-green-800 mr-2"
+                          disabled={pending}
+                          onClick={() => markReady(o)}
+                          aria-label={`Έτοιμη η παραγγελία #${o.code}`}
+                        >
+                          Έτοιμη
+                        </button>
+                      )}
                       {open && (
-                        <button type="button" className="btn-secondary btn-sm whitespace-nowrap" disabled={pending} onClick={() => pickedUp(o)}>
+                        <button type="button" className="btn-secondary btn-sm" disabled={pending} onClick={() => pickedUp(o)} aria-label={`Παραδόθηκε η παραγγελία #${o.code}`}>
                           Παραδόθηκε
                         </button>
                       )}

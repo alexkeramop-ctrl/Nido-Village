@@ -4,11 +4,13 @@ import { run } from "@/server/action";
 import { requireRole } from "@/server/auth";
 import { createTablesBatch, upsertArea, upsertTable } from "@/server/services/floor";
 
-export async function saveAreaAction(input: { id?: number; name: string; sort: number; active: boolean }) {
+export async function saveAreaAction(input: { id?: number; name: string; sort: number; active: boolean; barStationId: number | null }) {
   return run(async () => {
     await requireRole("manager", "admin");
     await upsertArea(input);
     revalidatePath("/admin/tables");
+    revalidatePath("/admin/floor");
+    revalidatePath("/pda");
   });
 }
 

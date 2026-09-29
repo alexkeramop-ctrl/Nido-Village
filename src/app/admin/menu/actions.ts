@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { run } from "@/server/action";
 import { requireRole } from "@/server/auth";
 import { parseEuroToCents } from "@/server/money";
-import { setProductAvailability, upsertCategory, upsertProduct } from "@/server/services/catalog";
+import { deleteCategory, deleteProduct, setProductAvailability, upsertCategory, upsertProduct } from "@/server/services/catalog";
 
 export async function saveCategoryAction(input: { id?: number; name: string; sort: number; color: string; printStationId: number | null; active: boolean }) {
   return run(async () => {
@@ -55,5 +55,29 @@ export async function setAvailabilityAction(id: number, available: boolean) {
     await requireRole("manager", "admin");
     await setProductAvailability(id, available);
     revalidatePath("/admin/menu");
+  });
+}
+
+/** Διαγραφή κατηγορίας (μόνο αν δεν έχει είδη· αλλιώς η υπηρεσία ρίχνει σφάλμα). */
+export async function deleteCategoryAction(id: number) {
+  return run(async () => {
+    await requireRole("manager", "admin");
+    if (!Number.isInteger(id) || id <= 0) throw new Error("Μη έγκυρη κατηγορία");
+    await deleteCategory(id);
+    revalidatePath("/admin/menu");
+    revalidatePath("/pda");
+  });
+}
+
+/** Διαγραφή είδους: πλήρης αν δεν έχει πωλήσεις, αλλιώς απενεργοποίηση. */
+export async function deleteProductAction(id: number) {
+  return run(async () => {
+    await requireRole("manager", "admin");
+    if (!Number.isInteger(id) || id <= 0) throw new Error("Μη έγκυρο είδος");
+    const result = await deleteProduct(id);
+    revalidatePath("/admin/menu");
+    revalidatePath("/admin/recipes");
+    revalidatePath("/pda");
+    return result;
   });
 }

@@ -63,3 +63,30 @@ export function parseDecimal(input: string, fallback = 0): number {
   const n = Number(String(input).trim().replace(/\s/g, "").replace(",", "."));
   return Number.isFinite(n) ? n : fallback;
 }
+
+/**
+ * Απλός πληθυντικός ελληνικών ουσιαστικών για ετικέτες συσκευασίας/μερίδας
+ * (μπουκάλι → μπουκάλια, ποτό → ποτά, μερίδα → μερίδες, φιάλη → φιάλες, δόση → δόσεις).
+ */
+export function pluralGr(word: string, n: number): string {
+  const w = word.trim();
+  if (!w || n === 1) return w;
+  const rules: [RegExp, string][] = [
+    [/ί$/u, "ιά"],
+    [/ι$/u, "ια"],
+    [/ό$/u, "ά"],
+    [/ο$/u, "α"],
+    [/ία$/u, "ίες"],
+    [/α$/u, "ες"],
+    [/(σ|ξ|ψ)η$/u, "$1εις"],
+    [/η$/u, "ες"],
+    [/ος$/u, "οι"],
+  ];
+  for (const [re, to] of rules) if (re.test(w)) return w.replace(re, to);
+  return w;
+}
+
+/** "2,4 μπουκάλια" / "35 ποτά": ποσότητα με σωστό πληθυντικό. */
+export function fmtPacks(n: number, word: string): string {
+  return `${fmtQty(n)} ${pluralGr(word, n)}`;
+}

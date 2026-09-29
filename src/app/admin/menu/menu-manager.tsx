@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { Badge, EmptyState, Field, Money } from "@/components/ui";
 import { FormModal, PageHeader, Section, TableWrap, Toggle, formValues, useActionRunner } from "@/components/admin/common";
 import { centsToInput } from "@/components/admin/format";
-import { saveCategoryAction, saveProductAction, setAvailabilityAction } from "./actions";
+import { deleteCategoryAction, deleteProductAction, saveCategoryAction, saveProductAction, setAvailabilityAction } from "./actions";
 
 type Category = { id: number; name: string; sort: number; color: string; printStationId: number | null; stationName: string | null; active: boolean };
 type Product = {
@@ -43,7 +43,7 @@ export function MenuManager({
   vatRates: VatRate[];
   groups: Group[];
 }) {
-  const { run, pending, toastElement } = useActionRunner();
+  const { run, pending, toast, toastElement } = useActionRunner();
   const [catModal, setCatModal] = useState<CatModal>(null);
   const [prodModal, setProdModal] = useState<ProdModal>(null);
   const [catFilter, setCatFilter] = useState<number | null>(null);
@@ -98,6 +98,18 @@ export function MenuManager({
       success: active ? "Η κατηγορία ενεργοποιήθηκε" : "Η κατηγορία απενεργοποιήθηκε",
     });
 
+  const removeCategory = (c: Category) => {
+    if (!confirm(`Διαγραφή της κατηγορίας «${c.name}»; Επιτρέπεται μόνο αν δεν έχει είδη.`)) return;
+    run(() => deleteCategoryAction(c.id), { success: `Η κατηγορία «${c.name}» διαγράφηκε` });
+  };
+
+  const removeProduct = (p: Product) => {
+    if (!confirm(`Διαγραφή του είδους «${p.name}»; Αν έχει πωλήσεις, θα απενεργοποιηθεί αντί να διαγραφεί.`)) return;
+    run(() => deleteProductAction(p.id), {
+      onSuccess: (result) => toast(result === "archived" ? "Το είδος έχει πωλήσεις, οπότε απενεργοποιήθηκε" : "Το είδος διαγράφηκε"),
+    });
+  };
+
   const editingCat = catModal?.mode === "edit" ? catModal.cat : null;
   const editingProd = prodModal?.mode === "edit" ? prodModal.prod : null;
 
@@ -135,6 +147,9 @@ export function MenuManager({
                   <Toggle checked={c.active} onChange={(v) => toggleCategoryActive(c, v)} disabled={pending} title="Ενεργή" />
                   <button className="btn-ghost btn-sm" onClick={() => setCatModal({ mode: "edit", cat: c })} aria-label={`Επεξεργασία ${c.name}`} title="Επεξεργασία">
                     ✎
+                  </button>
+                  <button className="btn-ghost btn-sm text-danger px-2" onClick={() => removeCategory(c)} disabled={pending} aria-label={`Διαγραφή ${c.name}`} title="Διαγραφή">
+                    ✕
                   </button>
                 </li>
               ))}
@@ -209,9 +224,12 @@ export function MenuManager({
                       </div>
                     </td>
                     <td>{p.active ? <Badge tone="ok">Ενεργό</Badge> : <Badge>Ανενεργό</Badge>}</td>
-                    <td className="text-right">
+                    <td className="text-right whitespace-nowrap">
                       <button className="btn-ghost btn-sm" onClick={() => setProdModal({ mode: "edit", prod: p })} aria-label={`Επεξεργασία ${p.name}`} title="Επεξεργασία">
                         ✎
+                      </button>
+                      <button className="btn-ghost btn-sm text-danger" onClick={() => removeProduct(p)} disabled={pending} aria-label={`Διαγραφή ${p.name}`}>
+                        Διαγραφή
                       </button>
                     </td>
                   </tr>

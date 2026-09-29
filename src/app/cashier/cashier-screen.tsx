@@ -5,7 +5,7 @@ import type { OrderType, PaymentMethod, SessionSource, SessionStatus } from "@/d
 import { Badge, Field, Modal, Money, Numpad, useToast } from "@/components/ui";
 import { parseEuroToCents } from "@/server/money";
 import { ORDER_TYPE_TITLE, PAYMENT_METHOD_LABEL, SESSION_STATUS_LABEL, SESSION_STATUS_TONE, fmtDateTime, fmtTime } from "@/components/ops/labels";
-import { closeCashShiftAction, markPickedUpAction, openCashShiftAction } from "./actions";
+import { closeCashShiftAction, markPickedUpAction, markReadyAction, openCashShiftAction } from "./actions";
 
 export type CashierSessionDto = {
   id: number;
@@ -114,7 +114,7 @@ export function CashierScreen({ sessions, shift, recent }: { sessions: CashierSe
                         </div>
                       </div>
                     </Link>
-                    {qr && !s.pickedUpAt && <PickedUpButton sessionId={s.id} code={s.pickupCode ?? String(s.id)} />}
+                    {qr && !s.pickedUpAt && <QrActions sessionId={s.id} code={s.pickupCode ?? String(s.id)} ready={!!s.readyAt} />}
                   </div>
                 );
               })}
@@ -153,11 +153,17 @@ export function CashierScreen({ sessions, shift, recent }: { sessions: CashierSe
 
 /* ---------------------------- Παραγγελίες QR ---------------------------- */
 
-/** «Παραδόθηκε» για παραγγελίες QR: εκτός του Link της κάρτας ώστε το πάτημα να μην ανοίγει τον λογαριασμό. */
-function PickedUpButton({ sessionId, code }: { sessionId: number; code: string }) {
+/** «Έτοιμη» / «Παραδόθηκε» για παραγγελίες QR: εκτός του Link της κάρτας ώστε το πάτημα να μην ανοίγει τον λογαριασμό. */
+function QrActions({ sessionId, code, ready }: { sessionId: number; code: string; ready: boolean }) {
   const { toast, element } = useToast();
   const [pending, start] = useTransition();
-  const click = () =>
+  const markReady = () =>
+    start(async () => {
+      const r = await markReadyAction(sessionId);
+      if (!r.ok) return toast(r.error, "danger");
+      toast(`Η #${code} είναι έτοιμη — ειδοποιήθηκε ο πελάτης`);
+    });
+  const pickedUp = () =>
     start(async () => {
       const r = await markPickedUpAction(sessionId);
       if (!r.ok) return toast(r.error, "danger");
@@ -165,9 +171,16 @@ function PickedUpButton({ sessionId, code }: { sessionId: number; code: string }
     });
   return (
     <>
-      <button type="button" className="btn-secondary btn-sm absolute bottom-3 right-3" disabled={pending} onClick={click} aria-label={`Παραδόθηκε η παραγγελία #${code}`}>
-        {pending ? "..." : "Παραδόθηκε"}
-      </button>
+      <div className="absolute bottom-3 right-3 flex items-center gap-2">
+        {!ready && (
+          <button type="button" className="btn btn-sm bg-ok text-white hover:bg-green-800" disabled={pending} onClick={markReady} aria-label={`Έτοιμη η παραγγελία #${code}`}>
+            {pending ? "..." : "Έτοιμη"}
+          </button>
+        )}
+        <button type="button" className="btn-secondary btn-sm" disabled={pending} onClick={pickedUp} aria-label={`Παραδόθηκε η παραγγελία #${code}`}>
+          {pending ? "..." : "Παραδόθηκε"}
+        </button>
+      </div>
       {element}
     </>
   );

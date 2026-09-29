@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { run } from "@/server/action";
 import { requireRole } from "@/server/auth";
 import { parseEuroToCents } from "@/server/money";
-import { adjustStock, receiveGoods, recordWaste, stockCount, upsertIngredient, upsertSupplier } from "@/server/services/inventory";
+import { adjustStock, deleteIngredient, deleteSupplier, receiveGoods, recordWaste, stockCount, upsertIngredient, upsertSupplier } from "@/server/services/inventory";
 import type { StockUnit } from "@/db/schema";
 
 const UNITS: StockUnit[] = ["g", "kg", "ml", "l", "pcs"];
@@ -14,13 +14,48 @@ function revalidateStock() {
   revalidatePath("/admin");
 }
 
-export async function saveIngredientAction(input: { id?: number; name: string; unit: string; minQty: number; costPerUnit: number; supplierId: number | null; active: boolean }) {
+export async function saveIngredientAction(input: {
+  id?: number;
+  name: string;
+  unit: string;
+  minQty: number;
+  costPerUnit: number;
+  supplierId: number | null;
+  active: boolean;
+  packSize: number | null;
+  packName: string | null;
+  portionQty: number | null;
+  portionName: string | null;
+}) {
   return run(async () => {
     await requireRole("manager", "admin");
     if (!UNITS.includes(input.unit as StockUnit)) throw new Error("Μη έγκυρη μονάδα μέτρησης");
     if (input.minQty < 0 || input.costPerUnit < 0) throw new Error("Οι τιμές δεν μπορούν να είναι αρνητικές");
+    if ((input.packSize ?? 0) < 0 || (input.portionQty ?? 0) < 0) throw new Error("Η συσκευασία και η μερίδα δεν μπορούν να είναι αρνητικές");
     await upsertIngredient({ ...input, unit: input.unit as StockUnit });
     revalidateStock();
+  });
+}
+
+/** Διαγραφή πρώτης ύλης: πλήρης αν δεν έχει ιστορικό, αλλιώς απενεργοποίηση. */
+export async function deleteIngredientAction(id: number) {
+  return run(async () => {
+    const me = await requireRole("manager", "admin");
+    if (!Number.isInteger(id) || id <= 0) throw new Error("Μη έγκυρη πρώτη ύλη");
+    const result = await deleteIngredient(id, me.id);
+    revalidateStock();
+    return result;
+  });
+}
+
+/** Διαγραφή προμηθευτή: πλήρης αν δεν έχει παραλαβές, αλλιώς απενεργοποίηση. */
+export async function deleteSupplierAction(id: number) {
+  return run(async () => {
+    await requireRole("manager", "admin");
+    if (!Number.isInteger(id) || id <= 0) throw new Error("Μη έγκυρος προμηθευτής");
+    const result = await deleteSupplier(id);
+    revalidatePath("/admin/inventory");
+    return result;
   });
 }
 

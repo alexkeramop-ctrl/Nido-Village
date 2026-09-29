@@ -2,13 +2,13 @@
 import { useState } from "react";
 import { Badge, EmptyState, Field } from "@/components/ui";
 import { FormModal, Section, TableWrap, Toggle, formValues, useActionRunner } from "@/components/admin/common";
-import { saveSupplierAction } from "./actions";
+import { deleteSupplierAction, saveSupplierAction } from "./actions";
 import type { Supplier } from "./types";
 
 type SupModal = { mode: "new" } | { mode: "edit"; sup: Supplier } | null;
 
 export function SuppliersTab({ suppliers }: { suppliers: Supplier[] }) {
-  const { run, pending, toastElement } = useActionRunner();
+  const { run, pending, toast, toastElement } = useActionRunner();
   const [modal, setModal] = useState<SupModal>(null);
 
   const submit = (fd: FormData) => {
@@ -27,6 +27,12 @@ export function SuppliersTab({ suppliers }: { suppliers: Supplier[] }) {
         }),
       { success: id ? "Ο προμηθευτής ενημερώθηκε" : "Ο προμηθευτής δημιουργήθηκε", onSuccess: () => setModal(null) },
     );
+  };
+  const remove = (s: Supplier) => {
+    if (!confirm(`Διαγραφή του προμηθευτή «${s.name}»; Αν έχει παραλαβές, θα απενεργοποιηθεί. Οι πρώτες ύλες του μένουν χωρίς προμηθευτή.`)) return;
+    run(() => deleteSupplierAction(s.id), {
+      onSuccess: (result) => toast(result === "archived" ? `Ο προμηθευτής «${s.name}» έχει παραλαβές, απενεργοποιήθηκε` : `Ο προμηθευτής «${s.name}» διαγράφηκε`),
+    });
   };
   const editing = modal?.mode === "edit" ? modal.sup : null;
 
@@ -66,9 +72,12 @@ export function SuppliersTab({ suppliers }: { suppliers: Supplier[] }) {
                     {s.notes ?? ""}
                   </td>
                   <td>{s.active ? <Badge tone="ok">Ενεργός</Badge> : <Badge>Ανενεργός</Badge>}</td>
-                  <td className="text-right">
+                  <td className="text-right whitespace-nowrap">
                     <button className="btn-ghost btn-sm" onClick={() => setModal({ mode: "edit", sup: s })}>
                       Επεξεργασία
+                    </button>
+                    <button className="btn-ghost btn-sm text-danger" onClick={() => remove(s)} disabled={pending} aria-label={`Διαγραφή ${s.name}`}>
+                      Διαγραφή
                     </button>
                   </td>
                 </tr>
