@@ -160,6 +160,16 @@ try {
   await kq.goto(`${BASE}/admin/floor`, { waitUntil: "networkidle" });
   await checkNoError(kq, "/admin/floor");
   await shot(kq, "17-admin-floor");
+  await kq.goto(`${BASE}/admin/staff`, { waitUntil: "networkidle" });
+  const revealBtn = kq.getByRole("button", { name: "Εμφάνιση PIN" }).first();
+  if (!(await revealBtn.count())) errors.push("staff: reveal PIN button missing");
+  else {
+    await revealBtn.click();
+    await kq.waitForTimeout(800);
+    const staffText = await kq.locator("body").innerText();
+    if (!/\b\d{4}\b/.test(staffText)) errors.push("staff: PIN not revealed");
+  }
+  await shot(kq, "18-admin-staff");
   await qc.close();
   await kq.context().close();
 

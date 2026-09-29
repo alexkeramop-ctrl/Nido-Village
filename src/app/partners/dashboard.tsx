@@ -201,6 +201,22 @@ export function PartnersDashboard({
             <div className="text-sm text-emerald-400">Κανένα είδος κάτω από το ελάχιστο απόθεμα</div>
           )}
         </Section>
+        <Section title="Επόμενες εκδηλώσεις (30 ημέρες)">
+          {s.events?.length ? (
+            <ul className="text-sm space-y-1.5">
+              {s.events.map((e, i) => (
+                <li key={i} className="flex items-center gap-2">
+                  <span className="text-slate-400 num w-24 shrink-0">{fmtDay(e.date)} {e.startTime}</span>
+                  <span className="text-slate-200 truncate">{e.title}</span>
+                  <span className="text-slate-500 text-xs shrink-0">{e.type} · {e.guests} άτ.{e.area ? ` · ${e.area}` : ""}</span>
+                  <span className={`ml-auto text-xs shrink-0 ${e.status === "confirmed" ? "text-emerald-400" : "text-amber-400"}`}>{e.status === "confirmed" ? "Επιβεβαιωμένο" : "Αίτημα"}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="text-sm text-slate-500">Δεν υπάρχουν προγραμματισμένες εκδηλώσεις</div>
+          )}
+        </Section>
         <Section title="Ιστορικό ημερών">
           <div className="max-h-64 overflow-y-auto">
             <table className="w-full text-sm">

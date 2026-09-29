@@ -8,6 +8,7 @@ import { listIngredients } from "@/server/services/inventory";
 import { addDays, salesByCategory, salesByEmployee, salesByProduct, salesSummary, todayAthens, todayDashboard } from "@/server/services/reports";
 import { getSettings } from "@/server/services/settings";
 import { listStations } from "@/server/services/printers";
+import { upcomingEvents, EVENT_TYPE_LABEL } from "@/server/services/events";
 
 export type Snapshot = {
   version: 1;
@@ -23,6 +24,7 @@ export type Snapshot = {
   live: { openSessions: number; openCents: number; pendingKitchen: number };
   stock: { lowCount: number; valueCents: number; low: { name: string; stock: number; min: number; unit: string }[] };
   printers: { name: string; ok: boolean; lastError: string | null }[];
+  events?: { date: string; startTime: string; title: string; type: string; guests: number; status: string; area: string | null }[];
 };
 
 export async function computeSnapshot(): Promise<Snapshot> {
@@ -30,7 +32,7 @@ export async function computeSnapshot(): Promise<Snapshot> {
   const yesterday = addDays(today, -1);
   const monthStart = today.slice(0, 8) + "01";
   const from30 = addDays(today, -29);
-  const [settings, t, y, mtd, last30, top, cat, emp, dash, ings, stations] = await Promise.all([
+  const [settings, t, y, mtd, last30, top, cat, emp, dash, ings, stations, events] = await Promise.all([
     getSettings(),
     salesSummary({ from: today, to: today }),
     salesSummary({ from: yesterday, to: yesterday }),
@@ -42,6 +44,7 @@ export async function computeSnapshot(): Promise<Snapshot> {
     todayDashboard(),
     listIngredients(),
     listStations(false),
+    upcomingEvents(30, 12),
   ]);
   const low = ings.filter((i) => i.low);
   return {
@@ -62,6 +65,15 @@ export async function computeSnapshot(): Promise<Snapshot> {
       low: low.slice(0, 30).map((i) => ({ name: i.name, stock: i.stock, min: i.min, unit: i.unit })),
     },
     printers: stations.map((s) => ({ name: s.name, ok: !s.lastError, lastError: s.lastError })),
+    events: events.map((e) => ({
+      date: e.date,
+      startTime: e.startTime,
+      title: e.title,
+      type: EVENT_TYPE_LABEL[e.type],
+      guests: e.guests,
+      status: e.status,
+      area: e.area?.name ?? null,
+    })),
   };
 }
 
