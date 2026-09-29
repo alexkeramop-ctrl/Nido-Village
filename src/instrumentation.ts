@@ -11,7 +11,12 @@ export async function register() {
   const seedFlag = process.env.NIDO_SEED_DEMO;
   const shouldSeed = cloud ? seedFlag === "1" : seedFlag !== "0";
   if (shouldSeed) {
-    const did = await seedDemo(db);
+    // Κλείδωμα ώστε δύο στιγμιότυπα (serverless) να μη φορτώσουν το demo δύο φορές.
+    const { sql } = await import("drizzle-orm");
+    const did = await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(20260929)`);
+      return seedDemo(tx as unknown as typeof db);
+    });
     if (did) console.log("[nido] Φορτώθηκαν δεδομένα επίδειξης (PIN διαχειριστή: 1234)");
   }
   await bootstrapPartnerFromEnv();

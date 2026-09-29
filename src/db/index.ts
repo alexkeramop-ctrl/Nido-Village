@@ -19,20 +19,40 @@ const holder: Holder = (g.__nidoDb ??= {});
 
 const migrationsFolder = path.join(process.cwd(), "drizzle");
 
+/** Η διεύθυνση της Postgres: DATABASE_URL, ή ό,τι ορίζουν οι ενσωματώσεις του Vercel (Neon / Vercel Postgres). */
+export function databaseUrl(): string | undefined {
+  return process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.POSTGRES_PRISMA_URL || process.env.DATABASE_URL_UNPOOLED || undefined;
+}
+
+/** Τα migrations μπορεί να τρέξουν ταυτόχρονα από πολλά στιγμιότυπα (serverless): επανάληψη σε σύγκρουση. */
+async function migrateWithRetry(run: () => Promise<void>, attempts = 4) {
+  for (let i = 1; ; i++) {
+    try {
+      await run();
+      return;
+    } catch (e) {
+      if (i >= attempts) throw e;
+      await new Promise((r) => setTimeout(r, 500 * i + Math.random() * 500));
+    }
+  }
+}
+
 async function connect(): Promise<Db> {
-  if (process.env.DATABASE_URL) {
+  const url = databaseUrl();
+  if (url) {
     const { Pool } = await import("pg");
     const { drizzle } = await import("drizzle-orm/node-postgres");
     const { migrate } = await import("drizzle-orm/node-postgres/migrator");
     // PG_SSL=require: TLS με επαλήθευση πιστοποιητικού. PG_SSL=no-verify: TLS χωρίς επαλήθευση (π.χ. pooler χωρίς CA).
-    const sslMode = process.env.PG_SSL ?? (process.env.DATABASE_URL.includes("supabase") ? "no-verify" : "off");
+    // Χωρίς PG_SSL: για Supabase "no-verify", αλλιώς ό,τι λέει το ίδιο το URL (π.χ. sslmode=require στο Neon).
+    const sslMode = process.env.PG_SSL ?? (url.includes("supabase") ? "no-verify" : "off");
     const pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      max: Number(process.env.PG_POOL_MAX ?? 5),
+      connectionString: url,
+      max: Number(process.env.PG_POOL_MAX ?? (process.env.VERCEL ? 3 : 5)),
       ssl: sslMode === "off" ? undefined : { rejectUnauthorized: sslMode !== "no-verify" },
     });
     const db = drizzle(pool, { schema, casing: "snake_case" });
-    await migrate(db, { migrationsFolder });
+    await migrateWithRetry(() => migrate(db, { migrationsFolder }));
     return db as unknown as Db;
   }
   const { PGlite } = await import("@electric-sql/pglite");
@@ -47,7 +67,7 @@ async function connect(): Promise<Db> {
   if (dir !== "memory") fs.mkdirSync(dir, { recursive: true });
   const client = dir === "memory" ? new PGlite() : new PGlite(dir);
   const db = drizzle(client, { schema, casing: "snake_case" });
-  await migrate(db, { migrationsFolder });
+  await migrateWithRetry(() => migrate(db, { migrationsFolder }));
   return db as unknown as Db;
 }
 
