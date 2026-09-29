@@ -119,42 +119,26 @@ export function MenuManager({
         }
       />
 
-      <div className="grid xl:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-4 items-start">
+      <div className="grid grid-cols-1 xl:grid-cols-[18rem_minmax(0,1fr)] gap-4 items-start">
         <Section title="Κατηγορίες" flush>
           {categories.length ? (
-            <TableWrap>
-              <thead>
-                <tr>
-                  <th>Σειρά</th>
-                  <th>Όνομα</th>
-                  <th>Σταθμός</th>
-                  <th>Ενεργή</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {categories.map((c) => (
-                  <tr key={c.id} className={c.active ? "" : "opacity-60"}>
-                    <td className="num text-ink-3">{c.sort}</td>
-                    <td>
-                      <span className="inline-flex items-center gap-2">
-                        <span className="inline-block h-4 w-4 rounded-full border border-line" style={{ backgroundColor: c.color }} aria-hidden />
-                        <span className="font-medium">{c.name}</span>
-                      </span>
-                    </td>
-                    <td className="text-ink-2">{c.stationName ?? <span className="text-ink-3">—</span>}</td>
-                    <td>
-                      <Toggle checked={c.active} onChange={(v) => toggleCategoryActive(c, v)} disabled={pending} title="Ενεργή" />
-                    </td>
-                    <td className="text-right">
-                      <button className="btn-ghost btn-sm" onClick={() => setCatModal({ mode: "edit", cat: c })}>
-                        Επεξεργασία
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </TableWrap>
+            <ul className="divide-y divide-line">
+              {categories.map((c) => (
+                <li key={c.id} className={`flex items-center gap-3 px-4 py-2.5 ${c.active ? "" : "opacity-60"}`}>
+                  <span className="inline-block h-4 w-4 shrink-0 rounded-full border border-line" style={{ backgroundColor: c.color }} aria-hidden />
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium truncate">{c.name}</div>
+                    <div className="text-xs text-ink-3 truncate num">
+                      σειρά {c.sort} · {c.stationName ?? "χωρίς εκτύπωση"}
+                    </div>
+                  </div>
+                  <Toggle checked={c.active} onChange={(v) => toggleCategoryActive(c, v)} disabled={pending} title="Ενεργή" />
+                  <button className="btn-ghost btn-sm" onClick={() => setCatModal({ mode: "edit", cat: c })} aria-label={`Επεξεργασία ${c.name}`} title="Επεξεργασία">
+                    ✎
+                  </button>
+                </li>
+              ))}
+            </ul>
           ) : (
             <div className="p-4">
               <EmptyState title="Δεν υπάρχουν κατηγορίες" hint="Δημιούργησε την πρώτη κατηγορία για να προσθέσεις είδη." />
@@ -188,7 +172,7 @@ export function MenuManager({
                   <th>Κατηγορία</th>
                   <th className="text-right">Τιμή</th>
                   <th>ΦΠΑ</th>
-                  <th>Σταθμός</th>
+                  <th className="hidden 2xl:table-cell">Σταθμός</th>
                   <th>Διαθέσιμο</th>
                   <th>Ενεργό</th>
                   <th></th>
@@ -208,11 +192,11 @@ export function MenuManager({
                       )}
                     </td>
                     <td className="text-ink-2">{p.categoryName}</td>
-                    <td className="text-right">
+                    <td className="text-right whitespace-nowrap">
                       <Money cents={p.priceCents} />
                     </td>
                     <td className="num text-ink-2">{p.vatLabel}</td>
-                    <td className="text-ink-2">{p.stationName ?? <span className="text-ink-3">κατηγορίας</span>}</td>
+                    <td className="text-ink-2 hidden 2xl:table-cell">{p.stationName ?? <span className="text-ink-3">κατηγορίας</span>}</td>
                     <td>
                       <div className="flex items-center gap-2">
                         <Toggle
@@ -226,8 +210,8 @@ export function MenuManager({
                     </td>
                     <td>{p.active ? <Badge tone="ok">Ενεργό</Badge> : <Badge>Ανενεργό</Badge>}</td>
                     <td className="text-right">
-                      <button className="btn-ghost btn-sm" onClick={() => setProdModal({ mode: "edit", prod: p })}>
-                        Επεξεργασία
+                      <button className="btn-ghost btn-sm" onClick={() => setProdModal({ mode: "edit", prod: p })} aria-label={`Επεξεργασία ${p.name}`} title="Επεξεργασία">
+                        ✎
                       </button>
                     </td>
                   </tr>
@@ -268,7 +252,7 @@ export function MenuManager({
       </FormModal>
 
       <FormModal open={prodModal !== null} onClose={() => setProdModal(null)} title={editingProd ? "Επεξεργασία είδους" : "Νέο είδος"} onSubmit={submitProduct} pending={pending} wide>
-        <div className="grid sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="sm:col-span-2">
             <Field label="Όνομα">
               <input name="name" className="input" required defaultValue={editingProd?.name ?? ""} autoFocus />
@@ -319,7 +303,7 @@ export function MenuManager({
         <fieldset>
           <legend className="label">Ομάδες επιλογών</legend>
           {groups.length ? (
-            <div className="grid sm:grid-cols-2 gap-1.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
               {groups.map((g) => (
                 <label key={g.id} className={`flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm ${g.active ? "" : "opacity-60"}`}>
                   <input type="checkbox" name="groupIds" value={g.id} defaultChecked={editingProd?.groupIds.includes(g.id) ?? false} className="h-4 w-4 accent-brand" />

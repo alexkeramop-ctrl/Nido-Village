@@ -41,7 +41,7 @@ export default async function AdminOverviewPage() {
         <Stat label="Χαμηλό απόθεμα" value={low.length} sub={low.length ? "είδη κάτω από το ελάχιστο" : "όλα εντάξει"} tone={low.length ? "danger" : "ok"} />
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Section title="Εκτυπωτές" actions={<Link href="/admin/printers" className="btn-ghost btn-sm">Διαχείριση</Link>} flush>
           {stations.length ? (
             <ul className="divide-y divide-line">

@@ -54,7 +54,7 @@ export function ModifiersManager({ groups }: { groups: Group[] }) {
       />
 
       {groups.length ? (
-        <div className="grid md:grid-cols-2 gap-4 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
           {groups.map((g) => (
             <Section
               key={g.id}

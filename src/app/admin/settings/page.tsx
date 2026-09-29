@@ -18,7 +18,7 @@ export default async function SettingsPage() {
   return (
     <div className="space-y-4">
       <PageHeader title="Ρυθμίσεις" subtitle="Στοιχεία καταστήματος, συντελεστές ΦΠΑ, σύνδεση cloud και φορολογικά." />
-      <div className="grid lg:grid-cols-2 gap-4 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
         <SettingsForm settings={settings} />
         <VatTable rates={vatRates.map((v) => ({ id: v.id, name: v.name, ratePct: Number(v.ratePct), mydataCategory: v.mydataCategory, active: v.active }))} />
         <Section title="Σύνδεση cloud">

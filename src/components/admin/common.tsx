@@ -19,7 +19,7 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
 
 export function Section({ title, children, actions, className = "", flush = false }: { title?: ReactNode; children: ReactNode; actions?: ReactNode; className?: string; flush?: boolean }) {
   return (
-    <section className={`card ${className}`}>
+    <section className={`card min-w-0 ${className}`}>
       {(title || actions) && (
         <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-line">
           {title && <h2 className="font-semibold">{title}</h2>}
@@ -38,7 +38,7 @@ export function InfoBox({ children, tone = "neutral" }: { children: ReactNode; t
 
 export function TableWrap({ children }: { children: ReactNode }) {
   return (
-    <div className="overflow-x-auto">
+    <div className="relative overflow-x-auto">
       <table className="table-grid">{children}</table>
     </div>
   );
@@ -65,7 +65,7 @@ export function Toggle({
 }) {
   const inputProps = checked === undefined ? { defaultChecked: defaultChecked ?? false } : { checked };
   return (
-    <label className={`inline-flex items-center gap-2 select-none ${disabled ? "opacity-50" : "cursor-pointer"}`} title={title}>
+    <label className={`relative inline-flex items-center gap-2 select-none ${disabled ? "opacity-50" : "cursor-pointer"}`} title={title}>
       <input
         type="checkbox"
         className="peer sr-only"

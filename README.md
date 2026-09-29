@@ -99,3 +99,23 @@ tests/             vitest (τρέχουν σε PGlite στη μνήμη)
 - Δεν μιλά με τερματικά POS (η διασύνδεση Α.1155/2023 γίνεται μαζί με τον πάροχο).
 - Δεν έχει offline λειτουργία στη συσκευή του σερβιτόρου: αν χαθεί το WiFi προς το box, η αποστολή αποτυγχάνει με μήνυμα και ξαναστέλνεται.
 - Δεν έχει κρατήσεις, online παραγγελίες, loyalty, efood/Wolt.
+
+## Screenshots
+
+| PDA (κινητό) | Παραγγελία | Κουζίνα |
+|---|---|---|
+| ![PDA](docs/screenshots/pda-floor.png) | ![Παραγγελία](docs/screenshots/pda-order.png) | ![KDS](docs/screenshots/kds.png) |
+
+| Ταμείο | Διαχείριση | Αναφορές | Συνεταίροι |
+|---|---|---|---|
+| ![Ταμείο](docs/screenshots/cashier-payment.png) | ![Διαχείριση](docs/screenshots/admin-overview.png) | ![Αναφορές](docs/screenshots/admin-reports.png) | ![Συνεταίροι](docs/screenshots/partners-dashboard.png) |
+
+## End-to-end έλεγχος
+
+Με τρέχοντα server (και έναν χρήστη συνεταίρου, π.χ. μέσω `PARTNER_BOOTSTRAP_EMAIL`/`PARTNER_BOOTSTRAP_PASSWORD`):
+
+```bash
+BASE=http://localhost:3000 PARTNER_EMAIL=partner@nido.test PARTNER_PASSWORD=partner123 node scripts/e2e-smoke.mjs
+```
+
+Κάνει login ως σερβιτόρος, στέλνει παραγγελία, την ετοιμάζει η κουζίνα, την εισπράττει το ταμείο, ανοίγει όλες τις σελίδες διαχείρισης και το dashboard συνεταίρων, και αποθηκεύει screenshots στον φάκελο `screenshots/`.

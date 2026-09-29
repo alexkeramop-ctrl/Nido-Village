@@ -150,7 +150,7 @@ export function RecipesManager({ products, modifiers, ingredients }: { products:
 
       <Modal open={target !== null} onClose={() => setTarget(null)} title={target ? `Συνταγή · ${target.name}` : ""} wide>
         <div className="space-y-4">
-          <div className="overflow-x-auto">
+          <div className="relative overflow-x-auto">
             <table className="table-grid">
               <thead>
                 <tr>

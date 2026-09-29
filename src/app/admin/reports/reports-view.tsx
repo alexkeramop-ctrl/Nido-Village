@@ -92,7 +92,7 @@ export function ReportsView({
         <Stat label="Εκπτώσεις" value={<Money cents={s.discountsCents} />} sub={<span>ακυρώσεις: {s.voidsCount} (<Money cents={s.voidsCents} />)</span>} tone={s.voidsCount ? "warn" : undefined} />
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Section title="Τζίρος ανά ημέρα">
           <BarChart data={s.byDay.map((d) => ({ key: d.day, label: fmtDayShort(d.day), value: d.grossCents, sub: `${d.count} λογαριασμοί` }))} emptyText="Δεν υπάρχουν κλεισμένοι λογαριασμοί στην περίοδο" />
         </Section>
@@ -101,7 +101,7 @@ export function ReportsView({
         </Section>
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Section title="Τρόποι πληρωμής" flush>
           <TableWrap>
             <thead>
@@ -240,7 +240,7 @@ export function ReportsView({
         </TableWrap>
       </Section>
 
-      <div className="grid lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Section title="Πωλήσεις ανά κατηγορία" flush>
           <TableWrap>
             <thead>

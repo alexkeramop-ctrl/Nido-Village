@@ -5,6 +5,7 @@
  *  - PGLITE_DIR=memory: προσωρινή βάση στη μνήμη (tests).
  * Τα migrations εκτελούνται αυτόματα στην πρώτη σύνδεση.
  */
+import fs from "node:fs";
 import path from "node:path";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import type { ExtractTablesWithRelations } from "drizzle-orm";
@@ -32,6 +33,7 @@ async function connect(): Promise<Db> {
   const { drizzle } = await import("drizzle-orm/pglite");
   const { migrate } = await import("drizzle-orm/pglite/migrator");
   const dir = process.env.PGLITE_DIR ?? path.join(process.cwd(), ".data", "pglite");
+  if (dir !== "memory") fs.mkdirSync(dir, { recursive: true });
   const client = dir === "memory" ? new PGlite() : new PGlite(dir);
   const db = drizzle(client, { schema, casing: "snake_case" });
   await migrate(db, { migrationsFolder });

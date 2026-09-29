@@ -3,7 +3,7 @@
  * Το PIN αποθηκεύεται ως scrypt hash. Το session είναι υπογεγραμμένο JWT σε cookie.
  */
 import { SignJWT, jwtVerify } from "jose";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import type { EmployeeRole } from "@/db/schema";
@@ -81,11 +81,13 @@ export async function requireRole(...allowed: EmployeeRole[]): Promise<SessionUs
 
 export async function setSessionCookie(user: SessionUser) {
   const store = await cookies();
+  const proto = ((await headers()).get("x-forwarded-proto") ?? "").split(",")[0].trim();
   store.set(SESSION_COOKIE, await signSession(user), {
     httpOnly: true,
     sameSite: "lax",
     path: "/",
     maxAge: SESSION_HOURS * 3600,
+    secure: proto === "https",
   });
 }
 

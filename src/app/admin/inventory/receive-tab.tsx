@@ -72,7 +72,7 @@ export function ReceiveTab({ ingredients, suppliers, today, receipts }: { ingred
             submit();
           }}
         >
-          <div className="grid sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Field label="Προμηθευτής">
               <select className="input" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
                 <option value="">—</option>
@@ -93,7 +93,7 @@ export function ReceiveTab({ ingredients, suppliers, today, receipts }: { ingred
             </Field>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="relative overflow-x-auto">
             <table className="table-grid">
               <thead>
                 <tr>

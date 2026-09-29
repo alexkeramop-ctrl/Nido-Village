@@ -1,7 +1,7 @@
 /** Χρήστες συνεταίρων (online dashboard, μόνο ανάγνωση). */
 import { asc, eq } from "drizzle-orm";
 import { SignJWT, jwtVerify } from "jose";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { getDb, schema } from "@/db";
 import { omit } from "@/server/util";
 import { hashPin, verifyPin } from "@/server/pin";
@@ -57,7 +57,14 @@ export async function setPartnerCookie(p: PartnerSession) {
     .setExpirationTime(`${HOURS}h`)
     .sign(secret());
   const store = await cookies();
-  store.set(PARTNER_COOKIE, token, { httpOnly: true, sameSite: "lax", path: "/", maxAge: HOURS * 3600, secure: process.env.NODE_ENV === "production" });
+  store.set(PARTNER_COOKIE, token, { httpOnly: true, sameSite: "lax", path: "/", maxAge: HOURS * 3600, secure: await isHttps() });
+}
+
+/** Secure cookie μόνο όταν η σελίδα σερβίρεται με HTTPS (στο LAN του καταστήματος είναι http). */
+async function isHttps(): Promise<boolean> {
+  const h = await headers();
+  const proto = h.get("x-forwarded-proto") ?? "";
+  return proto.split(",")[0].trim() === "https";
 }
 
 export async function clearPartnerCookie() {

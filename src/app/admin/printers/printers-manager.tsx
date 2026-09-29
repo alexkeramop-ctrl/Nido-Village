@@ -231,7 +231,7 @@ export function PrintersManager({ stations, jobs, kinds }: { stations: Station[]
       </Section>
 
       <FormModal open={modal !== null} onClose={() => setModal(null)} title={editing ? "Επεξεργασία σταθμού" : "Νέος σταθμός εκτύπωσης"} onSubmit={submit} pending={pending} wide>
-        <div className="grid sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="Όνομα">
             <input name="name" className="input" required defaultValue={editing?.name ?? ""} autoFocus />
           </Field>
