@@ -197,6 +197,7 @@ export async function sendRound(sessionId: number, cart: CartLine[], employeeId:
     issuedAt: fiscal.status === "issued" ? now : null,
   });
 
+  await refreshSessionReadiness(sessionId);
   emit({ type: "print.changed" });
   emit({ type: "session.changed", sessionId });
   emit({ type: "floor.changed" });
@@ -355,6 +356,27 @@ export async function getKdsTickets(stationId?: number | null): Promise<KdsTicke
   return [...map.values()].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 }
 
+/**
+ * Αν όλα τα ενεργά είδη μιας συνεδρίας είναι έτοιμα/σερβιρισμένα, σημειώνει readyAt
+ * (μία φορά). Το χρησιμοποιεί η σελίδα κατάστασης της παραγγελίας QR για να ειδοποιήσει τον πελάτη.
+ */
+export async function refreshSessionReadiness(sessionId: number) {
+  const db = await getDb();
+  const s = await db.query.tableSessions.findFirst({ where: eq(schema.tableSessions.id, sessionId), with: { items: true } });
+  if (!s) return;
+  const live = s.items.filter((i) => i.status !== "voided");
+  const allReady = live.length > 0 && live.every((i) => i.status === "ready" || i.status === "served");
+  if (allReady && !s.readyAt) {
+    await db.update(schema.tableSessions).set({ readyAt: new Date() }).where(eq(schema.tableSessions.id, sessionId));
+    emit({ type: "session.changed", sessionId });
+    emit({ type: "floor.changed" });
+  } else if (!allReady && s.readyAt && live.some((i) => i.status === "sent" || i.status === "preparing")) {
+    // Νέος γύρος μετά την ετοιμότητα: η παραγγελία δεν είναι πια πλήρως έτοιμη.
+    await db.update(schema.tableSessions).set({ readyAt: null }).where(eq(schema.tableSessions.id, sessionId));
+    emit({ type: "session.changed", sessionId });
+  }
+}
+
 export async function setItemStatus(itemId: number, status: "preparing" | "ready" | "served") {
   const db = await getDb();
   const set: Partial<typeof schema.orderItems.$inferInsert> = { status };
@@ -368,6 +390,7 @@ export async function setItemStatus(itemId: number, status: "preparing" | "ready
   if (row) {
     emit({ type: "kds.changed" });
     emit({ type: "session.changed", sessionId: row.sessionId });
+    await refreshSessionReadiness(row.sessionId);
   }
   return row;
 }
@@ -381,7 +404,10 @@ export async function bumpOrder(orderId: number, stationId?: number | null) {
   await db.update(schema.orderItems).set({ status: "ready", readyAt: new Date() }).where(where);
   emit({ type: "kds.changed" });
   const o = await db.query.orders.findFirst({ where: eq(schema.orders.id, orderId) });
-  if (o) emit({ type: "session.changed", sessionId: o.sessionId });
+  if (o) {
+    emit({ type: "session.changed", sessionId: o.sessionId });
+    await refreshSessionReadiness(o.sessionId);
+  }
 }
 
 export async function markServed(sessionId: number) {

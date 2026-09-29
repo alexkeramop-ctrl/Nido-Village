@@ -1,4 +1,5 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
+import type { TableShape } from "@/db/schema";
 import { getDb, schema } from "@/db";
 import { emit } from "@/server/events";
 import { lineTotalCents } from "./billing";
@@ -55,6 +56,9 @@ export type FloorTable = {
   id: number;
   name: string;
   seats: number;
+  posX: number | null;
+  posY: number | null;
+  shape: TableShape;
   session: null | {
     id: number;
     openedAt: Date;
@@ -67,7 +71,7 @@ export type FloorTable = {
   };
 };
 
-export type FloorArea = { id: number; name: string; tables: FloorTable[] };
+export type FloorArea = { id: number; name: string; mapAssetId: number | null; tables: FloorTable[] };
 
 export type TakeawaySession = {
   id: number;
@@ -118,10 +122,68 @@ export async function getFloor(): Promise<{ areas: FloorArea[]; takeaway: Takeaw
     areas: areas.map((a) => ({
       id: a.id,
       name: a.name,
-      tables: a.tables.map((t) => ({ id: t.id, name: t.name, seats: t.seats, session: byTable.get(t.id) ?? null })),
+      mapAssetId: a.mapAssetId,
+      tables: a.tables.map((t) => ({
+        id: t.id,
+        name: t.name,
+        seats: t.seats,
+        posX: t.posX,
+        posY: t.posY,
+        shape: t.shape,
+        session: byTable.get(t.id) ?? null,
+      })),
     })),
     takeaway: takeaway.sort((a, b) => a.openedAt.getTime() - b.openedAt.getTime()),
   };
+}
+
+/* ------------------------------ Χάρτης χώρου ------------------------------ */
+
+export type TablePosition = { id: number; posX: number | null; posY: number | null; shape?: TableShape };
+
+const clamp = (v: number) => Math.max(0, Math.min(1000, Math.round(v)));
+
+/** Αποθηκεύει θέσεις (0–1000 χιλιοστά) και σχήμα τραπεζιών ενός χώρου. */
+export async function saveTablePositions(areaId: number, positions: TablePosition[]) {
+  const db = await getDb();
+  await db.transaction(async (tx) => {
+    for (const p of positions) {
+      const set: Partial<typeof schema.tables.$inferInsert> = {
+        posX: p.posX === null ? null : clamp(p.posX),
+        posY: p.posY === null ? null : clamp(p.posY),
+      };
+      if (p.shape) set.shape = p.shape;
+      await tx.update(schema.tables).set(set).where(and(eq(schema.tables.id, p.id), eq(schema.tables.areaId, areaId)));
+    }
+  });
+  emit({ type: "floor.changed" });
+}
+
+/** Ορίζει (ή αφαιρεί) την εικόνα φόντου του χάρτη ενός χώρου. */
+export async function setAreaMap(areaId: number, assetId: number | null) {
+  const db = await getDb();
+  await db.update(schema.areas).set({ mapAssetId: assetId }).where(eq(schema.areas.id, areaId));
+  emit({ type: "floor.changed" });
+}
+
+/** Αυτόματη διάταξη σε πλέγμα για όσα τραπέζια δεν έχουν θέση (ή για όλα, με force). */
+export async function autoLayoutArea(areaId: number, force = false) {
+  const db = await getDb();
+  const rows = await db.query.tables.findMany({
+    where: and(eq(schema.tables.areaId, areaId), eq(schema.tables.active, true)),
+    orderBy: [asc(schema.tables.sort), asc(schema.tables.name)],
+  });
+  const targets = force ? rows : rows.filter((t) => t.posX === null || t.posY === null);
+  if (!targets.length) return 0;
+  const cols = Math.max(2, Math.ceil(Math.sqrt(targets.length * 1.4)));
+  const rowsN = Math.ceil(targets.length / cols);
+  const positions: TablePosition[] = targets.map((t, i) => ({
+    id: t.id,
+    posX: Math.round(((i % cols) + 0.5) * (1000 / cols)),
+    posY: Math.round((Math.floor(i / cols) + 0.5) * (1000 / Math.max(rowsN, 1))),
+  }));
+  await saveTablePositions(areaId, positions);
+  return positions.length;
 }
 
 export async function findOpenSessionForTable(tableId: number) {

@@ -51,12 +51,27 @@ export const employees = pgTable("employees", {
   createdAt: ts().notNull().defaultNow(),
 });
 
+/** Δυαδικά αρχεία (π.χ. εικόνα χάρτη χώρου) αποθηκευμένα ως base64. Σερβίρονται από /api/assets/[id]. */
+export const assets = pgTable("assets", {
+  id: serial().primaryKey(),
+  kind: text().notNull().default("map"),
+  mime: text().notNull(),
+  data: text().notNull(),
+  width: integer(),
+  height: integer(),
+  createdAt: ts().notNull().defaultNow(),
+});
+
 export const areas = pgTable("areas", {
   id: serial().primaryKey(),
   name: text().notNull(),
   sort: integer().notNull().default(0),
   active: boolean().notNull().default(true),
+  /** Εικόνα φόντου για τον χάρτη του χώρου (π.χ. αεροφωτογραφία). */
+  mapAssetId: integer().references(() => assets.id),
 });
+
+export type TableShape = "square" | "round" | "wide";
 
 export const tables = pgTable(
   "tables",
@@ -69,6 +84,10 @@ export const tables = pgTable(
     seats: integer().notNull().default(4),
     sort: integer().notNull().default(0),
     active: boolean().notNull().default(true),
+    /** Θέση στον χάρτη σε χιλιοστά (0–1000) του πλάτους/ύψους. null = δεν έχει τοποθετηθεί. */
+    posX: integer(),
+    posY: integer(),
+    shape: text().$type<TableShape>().notNull().default("square"),
   },
   (t) => [index("tables_area_idx").on(t.areaId)],
 );
@@ -181,6 +200,7 @@ export const productModifierGroups = pgTable(
 
 export type SessionStatus = "open" | "billed" | "closed" | "cancelled";
 export type OrderType = "dine_in" | "takeaway" | "delivery";
+export type SessionSource = "staff" | "qr";
 export type ItemStatus = "sent" | "preparing" | "ready" | "served" | "voided";
 
 export const tableSessions = pgTable(
@@ -204,6 +224,17 @@ export const tableSessions = pgTable(
     discountBy: integer().references(() => employees.id),
     billPrintedAt: ts(),
     notes: text(),
+    /** staff = από PDA/ταμείο, qr = παραγγελία πελάτη από QR. */
+    source: text().$type<SessionSource>().notNull().default("staff"),
+    /** Τυχαίο token για τη δημόσια σελίδα κατάστασης της παραγγελίας QR. */
+    publicToken: text().unique(),
+    /** Ημερήσιος αριθμός παραλαβής, π.χ. "042". */
+    pickupCode: text(),
+    customerName: text(),
+    customerPhone: text(),
+    /** Πότε ειδοποιήθηκε ο πελάτης ότι η παραγγελία είναι έτοιμη. */
+    readyAt: ts(),
+    pickedUpAt: ts(),
   },
   (t) => [index("sessions_status_idx").on(t.status), index("sessions_table_idx").on(t.tableId)],
 );
@@ -496,7 +527,10 @@ export const partnerUsers = pgTable("partner_users", {
 /* Relations (για το relational query API)                              */
 /* ------------------------------------------------------------------ */
 
-export const areasRelations = relations(areas, ({ many }) => ({ tables: many(tables) }));
+export const areasRelations = relations(areas, ({ many, one }) => ({
+  tables: many(tables),
+  mapAsset: one(assets, { fields: [areas.mapAssetId], references: [assets.id] }),
+}));
 export const tablesRelations = relations(tables, ({ one }) => ({
   area: one(areas, { fields: [tables.areaId], references: [areas.id] }),
 }));

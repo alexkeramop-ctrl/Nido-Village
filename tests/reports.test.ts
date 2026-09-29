@@ -20,8 +20,8 @@ describe("reports", () => {
   });
 
   it("summarizes closed sessions of today", async () => {
-    const t1 = await tableByName("Α1");
-    const t2 = await tableByName("Α2");
+    const t1 = await tableByName("Κ1");
+    const t2 = await tableByName("Κ2");
     const brizola = await productByName("Μπριζόλα χοιρινή");
     const cola = await productByName("Coca-Cola 330ml");
     const s1 = await openSession({ tableId: t1.id, covers: 2 }, waiter.id);
@@ -31,7 +31,7 @@ describe("reports", () => {
     await sendRound(s2.id, [{ productId: cola.id, qty: 1 }], waiter.id);
     await addPayment(s2.id, { method: "card", amountCents: 300 }, cashier.id);
     // open, unpaid session must not count
-    const s3 = await openSession({ tableId: (await tableByName("Α4")).id }, waiter.id);
+    const s3 = await openSession({ tableId: (await tableByName("Κ4")).id }, waiter.id);
     await sendRound(s3.id, [{ productId: brizola.id, qty: 5 }], waiter.id);
 
     const today = todayAthens();

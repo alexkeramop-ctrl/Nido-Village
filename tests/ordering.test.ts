@@ -20,7 +20,7 @@ beforeAll(async () => {
 describe("order flow", () => {
   it("opens a table, sends a round, prints to the right stations and deducts stock", async () => {
     const db = await getDb();
-    const table = await tableByName("Α3");
+    const table = await tableByName("Κ3");
     const brizola = await productByName("Μπριζόλα χοιρινή");
     const fix = await productByName("Μπύρα Fix 500ml");
     const medium = await modifierByName("Μέτριο");
@@ -102,7 +102,7 @@ describe("order flow", () => {
 
   it("voids an item, restores stock, prints void ticket and audits", async () => {
     const db = await getDb();
-    const table = await tableByName("Α3");
+    const table = await tableByName("Κ3");
     const s = (await db.query.tableSessions.findFirst({ where: eq(schema.tableSessions.tableId, table.id) }))!;
     const detail = (await getSessionDetail(s.id))!;
     const beer = detail.items.find((i) => i.nameSnapshot.startsWith("Μπύρα"))!;
@@ -123,7 +123,7 @@ describe("order flow", () => {
 
   it("applies discount, prints bill, takes split payments and closes with fiscal record", async () => {
     const db = await getDb();
-    const table = await tableByName("Α3");
+    const table = await tableByName("Κ3");
     const s = (await db.query.tableSessions.findFirst({ where: eq(schema.tableSessions.tableId, table.id) }))!;
     await expect(applyDiscount(s.id, 500, "", cashier.id)).rejects.toThrow();
     await applyDiscount(s.id, 500, "Φίλος", cashier.id);
@@ -173,7 +173,7 @@ describe("order flow", () => {
 
   it("rejects unavailable products", async () => {
     const db = await getDb();
-    const table = await tableByName("Κ1");
+    const table = await tableByName("Π1");
     const s = await openSession({ tableId: table.id }, waiter.id);
     const p = await productByName("Μουσακάς");
     await db.update(schema.products).set({ available: false }).where(eq(schema.products.id, p.id));

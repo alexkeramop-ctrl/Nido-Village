@@ -267,6 +267,11 @@ export async function listSessionsForCashier() {
     openedAt: s.openedAt,
     totals: computeTotals(s.items, s.discountCents, s.payments),
     itemCount: s.items.filter((i) => i.status !== "voided").reduce((n, i) => n + i.qty, 0),
+    source: s.source,
+    pickupCode: s.pickupCode,
+    customerName: s.customerName,
+    readyAt: s.readyAt,
+    pickedUpAt: s.pickedUpAt,
   }));
 }
 

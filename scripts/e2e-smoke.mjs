@@ -36,7 +36,7 @@ try {
   await p.goto(`${BASE}/pda`);
   await checkNoError(p, "/pda");
   await shot(p, "01-pda-floor");
-  await p.getByText("Α2", { exact: true }).first().click();
+  await p.getByText("Κ2", { exact: true }).first().click();
   await p.waitForURL(/\/pda\/s\/\d+/, { timeout: 20000 });
   await checkNoError(p, "/pda/s");
   await shot(p, "02-pda-order-empty");
@@ -67,7 +67,7 @@ try {
   await checkNoError(k, "/kds");
   await shot(k, "05-kds");
   const kdsText = await k.locator("body").innerText();
-  if (!kdsText.includes("Α2")) errors.push("KDS: ticket for Α2 not visible");
+  if (!kdsText.includes("Κ2")) errors.push("KDS: ticket for Κ2 not visible");
   const bump = k.getByRole("button", { name: /ΕΤΟΙΜΟ|Έτοιμο/ }).first();
   if (await bump.count()) await bump.click();
   await k.waitForTimeout(800);
@@ -78,7 +78,7 @@ try {
   await k.goto(`${BASE}/cashier`);
   await checkNoError(k, "/cashier");
   await shot(k, "07-cashier");
-  await k.getByText("Α2", { exact: true }).first().click();
+  await k.getByText("Κ2", { exact: true }).first().click();
   await k.waitForURL(/\/cashier\/s\/\d+/, { timeout: 20000 });
   await checkNoError(k, "/cashier/s");
   await shot(k, "08-cashier-bill");
