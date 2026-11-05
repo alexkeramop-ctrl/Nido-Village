@@ -1,7 +1,19 @@
 import type { NextConfig } from "next";
 
+// Build για Cloudflare Workers (npm run build:cf): χωρίς PGlite, η βάση είναι πάντα Postgres.
+const cloudflare = process.env.NIDO_TARGET === "cloudflare";
+
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["@electric-sql/pglite", "pg", "iconv-lite"],
+  serverExternalPackages: cloudflare ? ["pg", "iconv-lite"] : ["@electric-sql/pglite", "pg", "iconv-lite"],
+  ...(cloudflare
+    ? {
+        turbopack: { resolveAlias: { "@/db/pglite-impl": "./src/db/pglite-impl.cloudflare.ts" } },
+        webpack: (config: { resolve: { alias: Record<string, string> } }) => {
+          config.resolve.alias["@/db/pglite-impl"] = new URL("./src/db/pglite-impl.cloudflare.ts", import.meta.url).pathname;
+          return config;
+        },
+      }
+    : {}),
   // Επιτρέπει πολλούς dev servers στον ίδιο φάκελο (π.χ. NEXT_DIST_DIR=.next-a).
   distDir: process.env.NEXT_DIST_DIR ?? ".next",
   typedRoutes: false,

@@ -22,6 +22,7 @@ export function useLive(types: string[] | "all", onEvent?: (e: LiveEvent) => voi
     let closed = false;
     let retry: ReturnType<typeof setTimeout> | null = null;
     let pending: ReturnType<typeof setTimeout> | null = null;
+    let fallback: ReturnType<typeof setInterval> | null = null;
     const wanted = typesKey === "all" ? null : new Set(typesKey.split(","));
 
     const fire = (e: LiveEvent) => {
@@ -40,6 +41,13 @@ export function useLive(types: string[] | "all", onEvent?: (e: LiveEvent) => voi
         try {
           const e = JSON.parse(m.data) as LiveEvent;
           if (e.type === "hello") return;
+          if (e.type === "unsupported") {
+            // Ο server (π.χ. Cloudflare) δεν κρατά ανοιχτές συνδέσεις: ανανέωση ανά λίγα δευτερόλεπτα.
+            closed = true;
+            es?.close();
+            if (!opts.pollMs && !fallback) fallback = setInterval(() => fire({ type: "poll" }), Number(e.pollMs) || 10000);
+            return;
+          }
           if (!wanted || wanted.has(e.type)) fire(e);
         } catch {
           /* ignore */
@@ -59,6 +67,7 @@ export function useLive(types: string[] | "all", onEvent?: (e: LiveEvent) => voi
       if (retry) clearTimeout(retry);
       if (pending) clearTimeout(pending);
       if (poll) clearInterval(poll);
+      if (fallback) clearInterval(fallback);
     };
   }, [typesKey, router, opts.pollMs]);
 }

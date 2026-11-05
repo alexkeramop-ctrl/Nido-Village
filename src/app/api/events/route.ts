@@ -1,9 +1,13 @@
 import { subscribe, type NidoEvent } from "@/server/events";
+import { isWorker } from "@/server/cf";
+import { sseUnsupported } from "@/server/sse";
 
 export const dynamic = "force-dynamic";
 
 /** Server-Sent Events: κάθε οθόνη ακούει εδώ και ανανεώνεται όταν αλλάζει κάτι. */
 export async function GET(req: Request) {
+  // Cloudflare Workers: δεν μπορεί ένα αίτημα να γράφει στο stream άλλου· οι οθόνες περνούν σε polling.
+  if (isWorker) return sseUnsupported();
   const encoder = new TextEncoder();
   let unsubscribe: (() => void) | undefined;
   let heartbeat: NodeJS.Timeout | undefined;

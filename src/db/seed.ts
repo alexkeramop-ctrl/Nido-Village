@@ -8,6 +8,20 @@ import type { Db } from "./index";
 import * as schema from "./schema";
 import { encryptPin, hashPin } from "@/server/pin";
 
+/** Η αεροφωτογραφία του demo: από τον δίσκο, ή στα Cloudflare Workers από τα στατικά αρχεία (/seed/). */
+async function readSeedImage(): Promise<Buffer> {
+  const { isWorker } = await import("@/server/cf");
+  if (isWorker) {
+    const { cfContext } = await import("@/server/cf");
+    const { env } = await cfContext();
+    if (!env.ASSETS) throw new Error("no ASSETS binding");
+    const res = await env.ASSETS.fetch(new Request("https://assets.local/seed/nido-aerial.jpg"));
+    if (!res.ok) throw new Error(`seed image ${res.status}`);
+    return Buffer.from(await res.arrayBuffer());
+  }
+  return fs.readFileSync(path.join(process.cwd(), "src", "db", "seed-assets", "nido-aerial.jpg"));
+}
+
 export async function seedDemo(db: Db): Promise<boolean> {
   const existing = await db.select({ n: sql<number>`count(*)::int` }).from(schema.employees);
   if ((existing[0]?.n ?? 0) > 0) return false;
@@ -45,7 +59,7 @@ export async function seedDemo(db: Db): Promise<boolean> {
   // Χάρτης χώρου: η αεροφωτογραφία του Nido Village ως φόντο (918x1713).
   let mapAssetId: number | null = null;
   try {
-    const img = fs.readFileSync(path.join(process.cwd(), "src", "db", "seed-assets", "nido-aerial.jpg"));
+    const img = await readSeedImage();
     const [asset] = await db
       .insert(schema.assets)
       .values({ kind: "map", mime: "image/jpeg", data: img.toString("base64"), width: 918, height: 1713 })

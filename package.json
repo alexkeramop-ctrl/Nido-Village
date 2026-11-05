@@ -9,14 +9,18 @@
     "lint": "eslint src tests",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "build:cf": "node scripts/embed-migrations.mjs && NIDO_TARGET=cloudflare opennextjs-cloudflare build",
+    "preview:cf": "npm run build:cf && opennextjs-cloudflare preview",
+    "deploy:cf": "npm run build:cf && opennextjs-cloudflare deploy"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
+    "@opennextjs/cloudflare": "^1.20.16",
     "drizzle-orm": "^0.45.3",
     "iconv-lite": "^0.7.3",
     "jose": "^6.2.12",
-    "next": "16.3.7",
+    "next": "^16.4.5",
     "pg": "^8.23.0",
     "qrcode": "^1.5.4",
     "react": "19.2.8",
@@ -32,12 +36,13 @@
     "@types/react-dom": "^19",
     "drizzle-kit": "^0.31.11",
     "eslint": "^9",
-    "eslint-config-next": "16.3.7",
+    "eslint-config-next": "^16.4.5",
     "playwright": "^1.63.0",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
     "typescript": "^5",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.2",
+    "wrangler": "^4.158.0"
   },
   "engines": {
     "node": ">=20.9"

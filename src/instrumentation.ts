@@ -1,6 +1,9 @@
 /** Τρέχει μία φορά στην εκκίνηση του server: seed, worker εκτύπωσης, cloud publisher. */
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  // Cloudflare Workers: δεν επιτρέπεται I/O εκτός αιτήματος· migrations και seed γίνονται στην πρώτη σύνδεση (db/index.ts).
+  const { isWorker } = await import("@/server/cf");
+  if (isWorker) return;
   const { getDb } = await import("@/db");
   const { seedDemo } = await import("@/db/seed");
   const { startPrintWorker } = await import("@/server/printing/queue");

@@ -4,6 +4,7 @@
  * Κρατιέται στο globalThis για να επιβιώνει του HMR στο dev.
  */
 import { EventEmitter } from "node:events";
+import { isWorker, runAfterResponse } from "@/server/cf";
 
 export type NidoEvent =
   | { type: "floor.changed" }
@@ -20,6 +21,13 @@ bus.setMaxListeners(200);
 
 export function emit(event: NidoEvent) {
   bus.emit("event", event);
+  // Cloudflare Workers: δεν υπάρχει worker εκτύπωσης στο παρασκήνιο· η ουρά αδειάζει μετά την απάντηση.
+  if (event.type === "print.changed" && isWorker) {
+    runAfterResponse(async () => {
+      const { drainQueue } = await import("@/server/printing/queue");
+      await drainQueue();
+    });
+  }
 }
 
 export function subscribe(fn: (e: NidoEvent) => void): () => void {

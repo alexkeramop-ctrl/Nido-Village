@@ -18,6 +18,7 @@ export function usePublicLive(query: { token?: string; board?: boolean }, opts: 
     let closed = false;
     let retry: ReturnType<typeof setTimeout> | null = null;
     let pending: ReturnType<typeof setTimeout> | null = null;
+    let fallback: ReturnType<typeof setInterval> | null = null;
 
     const refresh = () => {
       // Ομαδοποίηση: πολλά events σε 150ms -> ένα refresh.
@@ -30,8 +31,14 @@ export function usePublicLive(query: { token?: string; board?: boolean }, opts: 
       es = new EventSource(url);
       es.onmessage = (m) => {
         try {
-          const e = JSON.parse(m.data) as { type?: string };
+          const e = JSON.parse(m.data) as { type?: string; pollMs?: number };
           if (e.type === "changed") refresh();
+          if (e.type === "unsupported") {
+            // Ο server (π.χ. Cloudflare) δεν κρατά ανοιχτές συνδέσεις: ανανέωση ανά λίγα δευτερόλεπτα.
+            closed = true;
+            es?.close();
+            if (!fallback) fallback = setInterval(refresh, Math.min(pollMs || Infinity, Number(e.pollMs) || 10000));
+          }
         } catch {
           /* ignore */
         }
@@ -56,6 +63,7 @@ export function usePublicLive(query: { token?: string; board?: boolean }, opts: 
       if (retry) clearTimeout(retry);
       if (pending) clearTimeout(pending);
       if (poll) clearInterval(poll);
+      if (fallback) clearInterval(fallback);
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [url, pollMs, router]);
