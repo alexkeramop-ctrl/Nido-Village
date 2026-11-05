@@ -1,4 +1,4 @@
-# Nido Village POS στο Cloudflare Workers (pos.nidovillage.gr)
+# Nido Village PDA στο Cloudflare Workers (pda.nidovillage.gr)
 
 Build με OpenNext (`@opennextjs/cloudflare`). Η βάση είναι η Supabase «Nido Vilage» μέσω **Hyperdrive**.
 
@@ -11,18 +11,21 @@ Build με OpenNext (`@opennextjs/cloudflare`). Η βάση είναι η Supaba
 
 ## Στήσιμο (μία φορά)
 1. **Supabase → Project «Nido Vilage» → Connect**: αντιγράψτε το *Session pooler* connection string (με τον κωδικό της βάσης).
-2. **Cloudflare → Storage & databases → Hyperdrive → Create configuration**: όνομα `nido-pos-db`, επικολλήστε το connection string. Αντιγράψτε το **ID**.
+2. **Cloudflare → Storage & databases → Hyperdrive → Create configuration**: όνομα `nido-pda-db`, επικολλήστε το connection string. Αντιγράψτε το **ID**.
 3. Στο `wrangler.jsonc` ενεργοποιήστε τη γραμμή `"hyperdrive": [{ "binding": "HYPERDRIVE", "id": "<ID>" }]`.
 4. **Cloudflare → Workers & Pages → Create → Import a repository** → `alexkeramop-ctrl/Nido-Village`, branch `cloudflare`:
    - Build command: `npm run build:cf`
    - Deploy command: `npx opennextjs-cloudflare deploy`
-5. Worker `nido-pos` → **Settings → Variables and Secrets** → Add → Type *Secret*: `NIDO_SECRET` = μεγάλο τυχαίο κείμενο.
+5. Worker `nido-pda` → **Settings → Variables and Secrets** → Add → Type *Secret*: `NIDO_SECRET` = μεγάλο τυχαίο κείμενο.
    (Μην το αλλάξετε αργότερα: χαλάνε τα PIN και οι συνδέσεις.)
-6. Re-deploy. Το `pos.nidovillage.gr` (route `custom_domain` στο wrangler.jsonc) στήνεται αυτόματα.
-7. Έλεγχος: `https://pos.nidovillage.gr/api/health` → `{"ok":true}`.
+   Επίσης Secret `NIDO_ADMIN_PIN` = το PIN του διαχειριστή (4–8 ψηφία). Τότε τα γνωστά demo PIN (1234, 1111, …) δεν
+   δουλεύουν: οι υπόλοιποι demo υπάλληλοι παίρνουν τυχαία PIN (φαίνονται στο /admin/staff) και δεν φτιάχνεται demo συνεταίρος.
+6. Re-deploy. Το `pda.nidovillage.gr` (route `custom_domain` στο wrangler.jsonc) στήνεται αυτόματα.
+7. Έλεγχος: `https://pda.nidovillage.gr/api/health` → `{"ok":true}`.
 
 ## Αμέσως μετά το πρώτο άνοιγμα
-Τα demo PIN (1234 κ.λπ.) και ο demo συνεταίρος είναι δημόσια γνωστά: αλλάξτε/διαγράψτε τα στο `/admin/staff` και `/admin/partners`.
+Μπείτε με το `NIDO_ADMIN_PIN` → `/admin/staff`: μετονομάστε/διαγράψτε τους demo υπαλλήλους και βάλτε τους πραγματικούς.
+Χωρίς `NIDO_ADMIN_PIN` φορτώνονται τα δημόσια γνωστά demo PIN (1234 κ.λπ.) — αλλάξτε τα αμέσως.
 
 ## Πλάνο Cloudflare
 Το worker είναι ~2,8 MB (όριο Free: 3 MB). Το Free plan έχει όριο 10 ms CPU ανά αίτημα, που η σελίδα (Next.js) και ο

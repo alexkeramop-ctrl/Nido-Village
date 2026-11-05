@@ -1,7 +1,7 @@
-// Cloudflare Workers: POS στο pos.nidovillage.gr. Build: npm run build:cf · Deploy: npm run deploy:cf
+// Cloudflare Workers: POS στο pda.nidovillage.gr. Build: npm run build:cf · Deploy: npm run deploy:cf
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "nido-pos",
+  "name": "nido-pda",
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
@@ -9,13 +9,13 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
-  "services": [{ "binding": "WORKER_SELF_REFERENCE", "service": "nido-pos" }],
+  "services": [{ "binding": "WORKER_SELF_REFERENCE", "service": "nido-pda" }],
   "vars": {
     "NIDO_MODE": "store"
   },
   "observability": { "enabled": true },
-  // Το Cloudflare δημιουργεί μόνο του την εγγραφή DNS και το πιστοποιητικό για το pos.nidovillage.gr.
-  "routes": [{ "pattern": "pos.nidovillage.gr", "custom_domain": true }]
+  // Το Cloudflare δημιουργεί μόνο του την εγγραφή DNS και το πιστοποιητικό για το pda.nidovillage.gr.
+  "routes": [{ "pattern": "pda.nidovillage.gr", "custom_domain": true }]
   // Βάση: Supabase μέσω Hyperdrive (προτείνεται). Δημιουργήστε το Hyperdrive στο dashboard και προσθέστε:
   // "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "<HYPERDRIVE_ID>" }]
   // Μυστικά (Settings → Variables and Secrets, τύπος Secret): NIDO_SECRET, και DATABASE_URL αν δεν χρησιμοποιείτε Hyperdrive.

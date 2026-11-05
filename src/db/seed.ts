@@ -3,6 +3,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { randomInt } from "node:crypto";
 import { sql } from "drizzle-orm";
 import type { Db } from "./index";
 import * as schema from "./schema";
@@ -22,18 +23,40 @@ async function readSeedImage(): Promise<Buffer> {
   return fs.readFileSync(path.join(process.cwd(), "src", "db", "seed-assets", "nido-aerial.jpg"));
 }
 
+/** PIN του demo. Χωρίς NIDO_ADMIN_PIN: τα γνωστά 1234/4444/… . Με NIDO_ADMIN_PIN: αυτό για τον διαχειριστή, τυχαία για τους άλλους. */
+export function demoPins(adminPin: string | undefined) {
+  const custom = !!adminPin;
+  if (custom && !/^\d{4,8}$/.test(adminPin)) throw new Error("[nido] Το NIDO_ADMIN_PIN πρέπει να είναι 4–8 ψηφία.");
+  const used = new Set<string>([custom ? adminPin! : "1234"]);
+  return {
+    custom,
+    admin: custom ? adminPin! : "1234",
+    next(demo: string) {
+      if (!custom) return demo;
+      let pin: string;
+      do pin = String(randomInt(100000, 1000000));
+      while (used.has(pin));
+      used.add(pin);
+      return pin;
+    },
+  };
+}
+
 export async function seedDemo(db: Db): Promise<boolean> {
   const existing = await db.select({ n: sql<number>`count(*)::int` }).from(schema.employees);
   if ((existing[0]?.n ?? 0) > 0) return false;
 
   const emp = (name: string, role: schema.EmployeeRole, pin: string) => ({ name, role, pinHash: hashPin(pin), pinEncrypted: encryptPin(pin) });
+  // Online (π.χ. pda.nidovillage.gr): με NIDO_ADMIN_PIN ο διαχειριστής παίρνει αυτό το PIN και οι υπόλοιποι demo υπάλληλοι
+  // τυχαία PIN (φαίνονται στο /admin/staff), ώστε να μη δουλεύουν τα γνωστά demo PIN 1234/4444/… .
+  const pins = demoPins(process.env.NIDO_ADMIN_PIN);
   await db.insert(schema.employees).values([
-    emp("Αλέξης", "admin", "1234"),
-    emp("Ελένη", "manager", "4444"),
-    emp("Νίκος", "cashier", "2222"),
-    emp("Μαρία", "waiter", "1111"),
-    emp("Κατερίνα (Μπαρ Κέντρο)", "waiter", "3333"),
-    emp("Γιώργος (Μπαρ Παιδική)", "waiter", "5555"),
+    emp("Αλέξης", "admin", pins.admin),
+    emp("Ελένη", "manager", pins.next("4444")),
+    emp("Νίκος", "cashier", pins.next("2222")),
+    emp("Μαρία", "waiter", pins.next("1111")),
+    emp("Κατερίνα (Μπαρ Κέντρο)", "waiter", pins.next("3333")),
+    emp("Γιώργος (Μπαρ Παιδική)", "waiter", pins.next("5555")),
   ]);
 
   const [vat13, vat24] = await db
@@ -360,9 +383,11 @@ export async function seedDemo(db: Db): Promise<boolean> {
 
   await db.insert(schema.settings).values({
     key: "venue",
-    value: { venueName: "Nido Village", vatNumber: "", taxOffice: "", address: "", phone: "", courses: 1 },
+    value: { venueName: "Nido Village", vatNumber: "", taxOffice: "", address: "Βασιλικά Θέρμης, 57006", phone: "697 488 2737", courses: 1 },
   });
-  // Demo χρήστης για το online dashboard συνεταίρων (/partners).
-  await db.insert(schema.partnerUsers).values({ name: "Συνεταίρος (demo)", email: "partner@nido.demo", passwordHash: hashPin("nido-demo-2026") });
+  // Demo χρήστης για το online dashboard συνεταίρων (/partners). Όχι όταν το σύστημα στήνεται online με δικό του PIN.
+  if (!pins.custom) {
+    await db.insert(schema.partnerUsers).values({ name: "Συνεταίρος (demo)", email: "partner@nido.demo", passwordHash: hashPin("nido-demo-2026") });
+  }
   return true;
 }
