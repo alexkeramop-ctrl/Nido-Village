@@ -3,7 +3,8 @@ import { and, asc, desc, eq, gte, lte, ne } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { audit } from "@/server/audit";
 import { emit } from "@/server/events";
-import type { EventStatus, EventType, PartyDetails } from "@/db/schema";
+import type { EventSource, EventStatus, EventType, PartyDetails } from "@/db/schema";
+import { ensureCustomerForBooking } from "./customers";
 import { addDays, todayAthens } from "./reports";
 
 export const EVENT_TYPE_LABEL: Record<EventType, string> = {
@@ -44,11 +45,15 @@ export type EventInput = {
   customerPhone?: string | null;
   customerEmail?: string | null;
   priceCents?: number;
+  /** Συμφωνημένη προκαταβολή (οι εισπράξεις καταχωρούνται ως πληρωμές, βλ. booking-payments.ts). */
   depositCents?: number;
+  /** Παλιό πεδίο: αν δεν δοθεί, σε ενημέρωση μένει όπως ήταν. */
   depositPaid?: boolean;
   menuNotes?: string | null;
   notes?: string | null;
   party?: PartyDetails | null;
+  /** Μόνο στη δημιουργία: "website" για αιτήματα από τη φόρμα του site. */
+  source?: EventSource;
 };
 
 /** Καθαρισμός στοιχείων πάρτι (μόνο γνωστά πεδία, λογικά όρια). */
@@ -69,7 +74,8 @@ function cleanParty(p: PartyDetails | null | undefined): PartyDetails | null {
   };
 }
 
-export async function upsertEvent(input: EventInput, employeeId: number) {
+/** employeeId = null για κρατήσεις που δεν τις πέρασε υπάλληλος (αίτημα από το site). */
+export async function upsertEvent(input: EventInput, employeeId: number | null) {
   const db = await getDb();
   const title = input.title.trim();
   if (!title) throw new Error("Απαιτείται τίτλος εκδήλωσης");
@@ -78,6 +84,11 @@ export async function upsertEvent(input: EventInput, employeeId: number) {
   const endTime = input.endTime ?? "16:00";
   if (!TIME_RE.test(startTime) || !TIME_RE.test(endTime)) throw new Error("Μη έγκυρη ώρα");
   if (!(input.type in EVENT_TYPE_LABEL)) throw new Error("Μη έγκυρος τύπος εκδήλωσης");
+  const customerName = (input.customerName ?? "").trim();
+  const customerPhone = input.customerPhone?.trim() || null;
+  const customerEmail = input.customerEmail?.trim() || null;
+  // Πελατολόγιο: η κράτηση συνδέεται με τον πελάτη του τηλεφώνου της (δημιουργείται αν δεν υπάρχει).
+  const customerId = await ensureCustomerForBooking({ name: customerName, phone: customerPhone, email: customerEmail });
   const values = {
     title,
     type: input.type,
@@ -87,12 +98,13 @@ export async function upsertEvent(input: EventInput, employeeId: number) {
     endTime,
     guests: Math.max(0, Math.round(input.guests ?? 0)),
     areaId: input.areaId ?? null,
-    customerName: (input.customerName ?? "").trim(),
-    customerPhone: input.customerPhone?.trim() || null,
-    customerEmail: input.customerEmail?.trim() || null,
+    customerName,
+    customerPhone,
+    customerEmail,
+    customerId,
     priceCents: Math.max(0, Math.round(input.priceCents ?? 0)),
     depositCents: Math.max(0, Math.round(input.depositCents ?? 0)),
-    depositPaid: input.depositPaid ?? false,
+    ...(input.depositPaid === undefined ? {} : { depositPaid: input.depositPaid }),
     menuNotes: input.menuNotes?.trim() || null,
     notes: input.notes?.trim() || null,
     party: input.type === "party" ? cleanParty(input.party) : null,
@@ -100,7 +112,10 @@ export async function upsertEvent(input: EventInput, employeeId: number) {
   };
   const [row] = input.id
     ? await db.update(schema.events).set(values).where(eq(schema.events.id, input.id)).returning()
-    : await db.insert(schema.events).values({ ...values, createdBy: employeeId }).returning();
+    : await db
+        .insert(schema.events)
+        .values({ ...values, source: input.source === "website" ? "website" : "staff", createdBy: employeeId })
+        .returning();
   if (!row) throw new Error("Η εκδήλωση δεν βρέθηκε");
   await audit(db, employeeId, input.id ? "event_update" : "event_create", "event", row.id, { title, date: row.date, status: row.status });
   emit({ type: "catalog.changed" });
@@ -157,6 +172,17 @@ export async function conflictingEvents(input: { id?: number; date: string; star
       e.startTime < input.endTime &&
       input.startTime < e.endTime,
   );
+}
+
+/** Αιτήματα από τη φόρμα του site που περιμένουν απάντηση (από σήμερα και μετά, οποιαδήποτε ημερομηνία). */
+export async function pendingWebsiteRequests() {
+  const db = await getDb();
+  return db.query.events.findMany({
+    where: and(eq(schema.events.source, "website"), eq(schema.events.status, "inquiry"), gte(schema.events.date, todayAthens())),
+    orderBy: [asc(schema.events.date), asc(schema.events.startTime)],
+    with: { area: true },
+    limit: 100,
+  });
 }
 
 export async function eventById(id: number) {
