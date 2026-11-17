@@ -9,11 +9,11 @@ import { and, asc, eq, gte, lt, lte } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { audit } from "@/server/audit";
 import type { FinanceKind, FinanceMethod } from "@/db/schema";
-import type { FinanceEntryRow, FinanceMonth, FinanceYear } from "@/components/admin/finance/meta";
+import type { FinanceEntryRow, FinanceMonth, FinanceYear, UnpaidSummary } from "@/components/admin/finance/meta";
 import { EXPENSE_CATEGORIES, FINANCE_METHOD_LABEL, INCOME_CATEGORIES } from "@/components/admin/finance/meta";
-import { addDays, athensDayStart } from "./reports";
+import { cleanAfm, validAfm, validIsoDate } from "@/lib/invoices";
+import { addDays, athensDayStart, todayAthens } from "./reports";
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 const athensDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens", year: "numeric", month: "2-digit", day: "2-digit" });
 const toAthens = (d: Date) => athensDate.format(d);
@@ -54,6 +54,33 @@ async function manualRows(from: string, toInclusive: string) {
   });
 }
 
+type ManualRow = Awaited<ReturnType<typeof manualRows>>[number];
+
+function toRow(e: ManualRow): FinanceEntryRow {
+  return {
+    id: e.id,
+    kind: e.kind,
+    date: e.date,
+    category: e.category,
+    description: e.description,
+    amountCents: e.amountCents,
+    vatCents: e.vatCents,
+    netCents: e.netCents,
+    method: e.method,
+    docNumber: e.docNumber,
+    supplierId: e.supplierId,
+    supplierName: e.supplier?.name ?? null,
+    supplierAfm: e.supplier?.vatNumber ?? null,
+    eventTitle: e.event?.title ?? null,
+    paid: e.paid,
+    dueDate: e.dueDate,
+    paidAt: e.paidAt,
+    attachmentUrl: e.attachmentUrl,
+    attachmentName: e.attachmentName,
+    hasDriveFile: Boolean(e.attachmentFileId),
+  };
+}
+
 function sumBy(rows: { category: string; amountCents: number }[]) {
   const m = new Map<string, number>();
   for (const r of rows) m.set(r.category, (m.get(r.category) ?? 0) + r.amountCents);
@@ -89,19 +116,7 @@ export async function financeMonth(month: string): Promise<FinanceMonth> {
   const manualExpense = exp.reduce((a, e) => a + e.amountCents, 0);
   const incomeTotal = posTotal + manualIncome;
   const expenseTotal = purchases + manualExpense;
-  const entries: FinanceEntryRow[] = manual.map((e) => ({
-    id: e.id,
-    kind: e.kind,
-    date: e.date,
-    category: e.category,
-    description: e.description,
-    amountCents: e.amountCents,
-    vatCents: e.vatCents,
-    method: e.method,
-    docNumber: e.docNumber,
-    supplierName: e.supplier?.name ?? null,
-    eventTitle: e.event?.title ?? null,
-  }));
+  const entries: FinanceEntryRow[] = manual.map(toRow);
   return {
     month,
     income: { pos, posTotal, manual: sumBy(inc), manualTotal: manualIncome, total: incomeTotal },
@@ -140,31 +155,78 @@ export async function financeYear(endMonth: string): Promise<FinanceYear> {
   return months.map((month) => ({ month, ...acc.get(month)! }));
 }
 
+export type FinanceAttachment = { fileId: string; url: string; name: string };
+
 export type FinanceInput = {
   id?: number;
   kind: FinanceKind;
   date: string;
   category: string;
   description?: string;
+  /** Σύνολο με ΦΠΑ. */
   amountCents: number;
   vatCents?: number;
+  /** Καθαρή αξία (τιμολόγια). */
+  netCents?: number | null;
   method?: FinanceMethod;
   supplierId?: number | null;
+  /** Νέος προμηθευτής από τη φόρμα τιμολογίου (δημιουργείται αν δεν υπάρχει ήδη με το ίδιο ΑΦΜ ή όνομα). */
+  newSupplier?: { name: string; vatNumber?: string | null } | null;
   eventId?: number | null;
   docNumber?: string | null;
+  /** false = οφείλεται. Χωρίς τιμή: πληρωμένο (όπως οι παλιές κινήσεις). */
+  paid?: boolean;
+  dueDate?: string | null;
+  paidAt?: string | null;
+  /** undefined = μην αλλάξεις το συνημμένο, null = αφαίρεσέ το από την κίνηση. */
+  attachment?: FinanceAttachment | null;
 };
+
+const lower = (s: string) => s.trim().toLocaleLowerCase("el-GR");
+
+/** Βρίσκει προμηθευτή με το ίδιο ΑΦΜ (ή το ίδιο όνομα) ή τον δημιουργεί. */
+export async function findOrCreateSupplier(input: { name: string; vatNumber?: string | null }, employeeId: number) {
+  const db = await getDb();
+  const name = input.name.trim().slice(0, 120);
+  if (!name) throw new Error("Γράψε την επωνυμία του νέου προμηθευτή");
+  const afmRaw = (input.vatNumber ?? "").trim();
+  const afm = cleanAfm(afmRaw);
+  if (afmRaw && !validAfm(afm)) throw new Error("Το ΑΦΜ του προμηθευτή δεν είναι έγκυρο (9 ψηφία). Για προμηθευτή εξωτερικού άφησέ το κενό.");
+  const all = await db.query.suppliers.findMany();
+  const existing = (afm ? all.find((s) => cleanAfm(s.vatNumber) === afm) : undefined) ?? all.find((s) => lower(s.name) === lower(name));
+  if (existing) {
+    const patch = { ...(afm && !existing.vatNumber ? { vatNumber: afm } : {}), ...(existing.active ? {} : { active: true }) };
+    if (Object.keys(patch).length) await db.update(schema.suppliers).set(patch).where(eq(schema.suppliers.id, existing.id));
+    return { id: existing.id, name: existing.name, created: false };
+  }
+  const [row] = await db.insert(schema.suppliers).values({ name, vatNumber: afm || null }).returning();
+  await audit(db, employeeId, "supplier_create", "supplier", row.id, { name: row.name, from: "invoice" });
+  return { id: row.id, name: row.name, created: true };
+}
 
 export async function upsertFinanceEntry(input: FinanceInput, employeeId: number) {
   const db = await getDb();
   if (input.kind !== "income" && input.kind !== "expense") throw new Error("Μη έγκυρος τύπος κίνησης");
-  if (!DATE_RE.test(input.date)) throw new Error("Μη έγκυρη ημερομηνία");
+  if (!validIsoDate(input.date)) throw new Error("Μη έγκυρη ημερομηνία");
   const cats: readonly string[] = input.kind === "income" ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
   if (!cats.includes(input.category)) throw new Error("Μη έγκυρη κατηγορία");
   if (!Number.isInteger(input.amountCents) || input.amountCents <= 0) throw new Error("Το ποσό πρέπει να είναι θετικό");
   const vatCents = Math.max(0, Math.round(input.vatCents ?? 0));
   if (vatCents > input.amountCents) throw new Error("Ο ΦΠΑ δεν μπορεί να ξεπερνά το ποσό");
+  const netCents = input.netCents === null || input.netCents === undefined ? null : Math.round(input.netCents);
+  if (netCents !== null && (netCents < 0 || netCents > input.amountCents)) throw new Error("Η καθαρή αξία δεν μπορεί να ξεπερνά το σύνολο");
   const method = input.method ?? "bank";
   if (!(method in FINANCE_METHOD_LABEL)) throw new Error("Μη έγκυρος τρόπος πληρωμής");
+  // Μόνο τα έξοδα μπορούν να οφείλονται· τα έσοδα περνιούνται όταν εισπραχθούν.
+  const paid = input.kind === "income" ? true : input.paid !== false;
+  for (const d of [input.dueDate, input.paidAt]) if (d && !validIsoDate(d)) throw new Error("Μη έγκυρη ημερομηνία πληρωμής");
+  const a = input.attachment;
+  if (a && (!a.fileId?.trim() || !/^https:\/\/(drive|docs)\.google\.com\//.test(a.url ?? "") || !a.name?.trim())) throw new Error("Μη έγκυρο συνημμένο");
+
+  let supplierId = input.kind === "expense" ? (input.supplierId ?? null) : null;
+  if (input.kind === "expense" && !supplierId && input.newSupplier?.name?.trim()) {
+    supplierId = (await findOrCreateSupplier(input.newSupplier, employeeId)).id;
+  }
   const values = {
     kind: input.kind,
     date: input.date,
@@ -172,10 +234,18 @@ export async function upsertFinanceEntry(input: FinanceInput, employeeId: number
     description: (input.description ?? "").trim().slice(0, 300),
     amountCents: input.amountCents,
     vatCents,
+    netCents: input.kind === "expense" ? netCents : null,
     method,
-    supplierId: input.supplierId ?? null,
-    eventId: input.eventId ?? null,
-    docNumber: input.docNumber?.trim() || null,
+    supplierId,
+    // Η φόρμα δεν στέλνει εκδήλωση: σε επεξεργασία η υπάρχουσα σύνδεση με εκδήλωση μένει όπως είναι.
+    ...(input.id && input.eventId === undefined ? {} : { eventId: input.eventId ?? null }),
+    docNumber: input.docNumber?.trim().slice(0, 60) || null,
+    paid,
+    dueDate: paid ? null : (input.dueDate ?? null),
+    paidAt: paid ? (input.paidAt ?? input.date) : null,
+    ...(a === undefined
+      ? {}
+      : { attachmentUrl: a ? a.url : null, attachmentName: a ? a.name.slice(0, 200) : null, attachmentFileId: a ? a.fileId : null }),
   };
   const [row] = input.id
     ? await db.update(schema.financeEntries).set(values).where(eq(schema.financeEntries.id, input.id)).returning()
@@ -186,8 +256,47 @@ export async function upsertFinanceEntry(input: FinanceInput, employeeId: number
     category: row.category,
     amountCents: row.amountCents,
     date: row.date,
+    paid: row.paid,
+    ...(row.attachmentName ? { attachment: row.attachmentName } : {}),
   });
   return row;
+}
+
+/** Όλα τα απλήρωτα τιμολόγια (όλων των μηνών), παλαιότερα πρώτα. */
+export async function unpaidInvoices(today = todayAthens()): Promise<UnpaidSummary> {
+  const db = await getDb();
+  const rows = await db.query.financeEntries.findMany({
+    where: and(eq(schema.financeEntries.kind, "expense"), eq(schema.financeEntries.paid, false)),
+    with: { supplier: true, event: true },
+    orderBy: [asc(schema.financeEntries.date), asc(schema.financeEntries.id)],
+  });
+  const overdue = rows.filter((r) => r.dueDate !== null && r.dueDate < today);
+  return {
+    totalCents: rows.reduce((s, r) => s + r.amountCents, 0),
+    count: rows.length,
+    overdueCents: overdue.reduce((s, r) => s + r.amountCents, 0),
+    overdueCount: overdue.length,
+    entries: rows.map(toRow),
+  };
+}
+
+/** «Σήμανση ως πληρωμένο»: ορίζει ημερομηνία και τρόπο πληρωμής. Η ημερομηνία παραστατικού (και το κέρδος του μήνα) δεν αλλάζει. */
+export async function markFinanceEntryPaid(id: number, input: { method: FinanceMethod; paidAt?: string | null }, employeeId: number) {
+  const db = await getDb();
+  if (!(input.method in FINANCE_METHOD_LABEL)) throw new Error("Μη έγκυρος τρόπος πληρωμής");
+  const paidAt = input.paidAt || todayAthens();
+  if (!validIsoDate(paidAt)) throw new Error("Μη έγκυρη ημερομηνία πληρωμής");
+  const e = await db.query.financeEntries.findFirst({ where: eq(schema.financeEntries.id, id) });
+  if (!e) throw new Error("Η κίνηση δεν βρέθηκε");
+  if (e.paid) throw new Error("Το τιμολόγιο είναι ήδη πληρωμένο");
+  const [row] = await db.update(schema.financeEntries).set({ paid: true, paidAt, method: input.method }).where(eq(schema.financeEntries.id, id)).returning();
+  await audit(db, employeeId, "finance_mark_paid", "finance_entry", id, { amountCents: e.amountCents, method: input.method, paidAt, date: e.date });
+  return row;
+}
+
+export async function getFinanceEntry(id: number) {
+  const db = await getDb();
+  return (await db.query.financeEntries.findFirst({ where: eq(schema.financeEntries.id, id) })) ?? null;
 }
 
 export async function deleteFinanceEntry(id: number, employeeId: number) {
