@@ -103,14 +103,17 @@ async function prepareWorker(db: Db) {
   try {
     const cloud = process.env.NIDO_MODE === "cloud";
     const seedFlag = process.env.NIDO_SEED_DEMO;
-    if (cloud ? seedFlag === "1" : seedFlag !== "0") {
+    // Online δεν φορτώνουμε ποτέ τα γνωστά demo PIN: περιμένουμε το μυστικό NIDO_ADMIN_PIN.
+    const noAdminPin = !process.env.NIDO_ADMIN_PIN;
+    if (noAdminPin) console.warn("[nido] Δεν έχει οριστεί NIDO_ADMIN_PIN: τα αρχικά δεδομένα δεν φορτώνονται μέχρι να οριστεί.");
+    if (!noAdminPin && (cloud ? seedFlag === "1" : seedFlag !== "0")) {
       const { seedDemo } = await import("./seed");
       const { sql } = await import("drizzle-orm");
       const did = await db.transaction(async (tx) => {
         await tx.execute(sql`select pg_advisory_xact_lock(20260929)`);
         return seedDemo(tx as unknown as Db);
       });
-      if (did) console.log("[nido] Φορτώθηκαν δεδομένα επίδειξης (PIN διαχειριστή: 1234)");
+      if (did) console.log("[nido] Φορτώθηκαν τα αρχικά δεδομένα (PIN διαχειριστή: NIDO_ADMIN_PIN)");
     }
     const { bootstrapPartnerFromEnv } = await import("@/server/services/partners");
     await bootstrapPartnerFromEnv();
