@@ -536,6 +536,10 @@ export type PartyDetails = {
   cake?: string;
 };
 export type EventStatus = "inquiry" | "confirmed" | "cancelled" | "done";
+/** Από πού ήρθε η κράτηση: staff = από τη Διαχείριση, website = αίτημα από τη φόρμα του site. */
+export type EventSource = "staff" | "website";
+// Ο πίνακας customers ζει στο schema-bookings.ts (χρειάζεται εδώ μόνο για το events.customerId).
+import { customers } from "./schema-bookings";
 
 export const events = pgTable(
   "events",
@@ -553,8 +557,13 @@ export const events = pgTable(
     customerName: text().notNull().default(""),
     customerPhone: text(),
     customerEmail: text(),
+    /** Πελάτης του πελατολογίου (συνδέεται αυτόματα από το τηλέφωνο). */
+    customerId: integer().references(() => customers.id),
+    source: text().$type<EventSource>().notNull().default("staff"),
     priceCents: integer().notNull().default(0),
+    /** Συμφωνημένη προκαταβολή. Οι πραγματικές εισπράξεις είναι κινήσεις στο finance_entries (eventId). */
     depositCents: integer().notNull().default(0),
+    /** Παλιό χειροκίνητο πεδίο: μένει για τις παλιές εγγραφές, η φόρμα δεν το αλλάζει πια. */
     depositPaid: boolean().notNull().default(false),
     menuNotes: text(),
     notes: text(),
@@ -564,7 +573,7 @@ export const events = pgTable(
     createdAt: ts().notNull().defaultNow(),
     updatedAt: ts().notNull().defaultNow(),
   },
-  (t) => [index("events_date_idx").on(t.date), index("events_status_idx").on(t.status)],
+  (t) => [index("events_date_idx").on(t.date), index("events_status_idx").on(t.status), index("events_customer_idx").on(t.customerId)],
 );
 
 export const eventsRelations = relations(events, ({ one }) => ({
@@ -720,3 +729,4 @@ export const financeEntriesRelations = relations(financeEntries, ({ one }) => ({
   supplier: one(suppliers, { fields: [financeEntries.supplierId], references: [suppliers.id] }),
   event: one(events, { fields: [financeEntries.eventId], references: [events.id] }),
 }));
+export * from "./schema-bookings";
