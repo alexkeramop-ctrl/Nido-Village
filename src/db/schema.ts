@@ -710,6 +710,18 @@ export const financeEntries = pgTable(
     supplierId: integer().references(() => suppliers.id),
     eventId: integer().references(() => events.id),
     docNumber: text(),
+    /** Τιμολόγια προμηθευτών: καθαρή αξία (χωρίς ΦΠΑ). Κενό στις παλιές κινήσεις. */
+    netCents: integer(),
+    /** false = οφείλεται (απλήρωτο τιμολόγιο). Οι παλιές κινήσεις είναι πληρωμένες. */
+    paid: boolean().notNull().default(true),
+    /** Λήξη πληρωμής (YYYY-MM-DD), προαιρετική. */
+    dueDate: text(),
+    /** Ημερομηνία πληρωμής (YYYY-MM-DD). */
+    paidAt: text(),
+    /** Συνημμένο παραστατικό στο Google Drive του ιδιοκτήτη. */
+    attachmentUrl: text(),
+    attachmentName: text(),
+    attachmentFileId: text(),
     createdBy: integer().references(() => employees.id),
     createdAt: ts().notNull().defaultNow(),
   },

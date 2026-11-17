@@ -43,6 +43,13 @@
       "when": 1794908993297,
       "tag": "0005_floor_plan",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794916214792,
+      "tag": "0006_invoices",
+      "breakpoints": true
     }
   ]
 }
