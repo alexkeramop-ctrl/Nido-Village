@@ -14,6 +14,8 @@
     "NIDO_MODE": "store"
   },
   "observability": { "enabled": true },
+  // Ο κώδικας τρέχει κοντά στη βάση (Φρανκφούρτη): κάθε σελίδα κάνει πολλά ερωτήματα, οπότε γλιτώνει τις διαδρομές.
+  "placement": { "mode": "smart" },
   // Το Cloudflare δημιουργεί μόνο του την εγγραφή DNS και το πιστοποιητικό για το pda.nidovillage.gr.
   "routes": [{ "pattern": "pda.nidovillage.gr", "custom_domain": true }],
   // Βάση: Neon (project morning-glade-19550702, Frankfurt) μέσω Hyperdrive "nido-pda".

@@ -10,7 +10,6 @@ const UNITS: StockUnit[] = ["g", "kg", "ml", "l", "pcs"];
 
 function revalidateStock() {
   revalidatePath("/admin/inventory");
-  revalidatePath("/admin/recipes");
   revalidatePath("/admin");
 }
 

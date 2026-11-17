@@ -89,6 +89,17 @@ async function connectWorker(): Promise<Db> {
   const db = drizzle(pool, { schema, casing: "snake_case" }) as unknown as Db;
   if (!workerState.migrated) {
     const { embeddedMigrations } = await import("./migrations.generated");
+    // Γρήγορος έλεγχος (1 ερώτημα): αν η βάση είναι ήδη ενημερωμένη και στημένη, δεν ξανατρέχουμε migrations/seed σε κάθε νέο στιγμιότυπο.
+    try {
+      const r = await pool.query('select (select count(*)::int from drizzle."__drizzle_migrations") as m, (select count(*)::int from employees) as e');
+      if (r.rows[0]?.m === embeddedMigrations.length) {
+        workerState.migrated = true;
+        if (r.rows[0]?.e > 0) workerState.seedStarted = true;
+        return db;
+      }
+    } catch {
+      /* άδεια βάση: συνεχίζουμε με τα migrations */
+    }
     const d = db as unknown as { dialect: { migrate: (m: unknown, s: unknown, c: unknown) => Promise<void> }; session: unknown };
     await migrateWithRetry(() => d.dialect.migrate(embeddedMigrations, d.session, { migrationsFolder: "" }));
     workerState.migrated = true;

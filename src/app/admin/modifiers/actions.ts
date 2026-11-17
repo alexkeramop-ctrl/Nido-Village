@@ -28,7 +28,6 @@ export async function saveModifierAction(input: { id?: number; groupId: number; 
       active: input.active,
     });
     revalidatePath("/admin/modifiers");
-    revalidatePath("/admin/recipes");
   });
 }
 
@@ -40,7 +39,6 @@ export async function deleteGroupAction(id: number) {
     await deleteModifierGroup(id);
     revalidatePath("/admin/modifiers");
     revalidatePath("/admin/menu");
-    revalidatePath("/admin/recipes");
     revalidatePath("/pda");
   });
 }
