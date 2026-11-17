@@ -22,7 +22,8 @@ const DAYS_FULL = ["Δευτέρα", "Τρίτη", "Τετάρτη", "Πέμπτ
 
 function greeting() {
   const h = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Athens", hour: "2-digit", hour12: false }).format(new Date()));
-  return h < 12 ? "Καλημέρα" : h < 18 ? "Καλό απόγευμα" : "Καλησπέρα";
+  // Καλημέρα ως τις 13:00, καλό μεσημέρι ως τις 16:00, μετά καλησπέρα (και μετά τα μεσάνυχτα, ως τις 05:00).
+  return h >= 5 && h < 13 ? "Καλημέρα" : h >= 13 && h < 16 ? "Καλό μεσημέρι" : "Καλησπέρα";
 }
 
 export default async function AdminOverviewPage() {
@@ -56,7 +57,11 @@ export default async function AdminOverviewPage() {
           </h1>
           <p className="text-sm text-ink-2 mt-1">
             {thisWeekend.length ? `${thisWeekend.length} κρατήσεις τις επόμενες 7 ημέρες.` : "Καμία κράτηση τις επόμενες 7 ημέρες."}
-            {low.length ? ` ${low.length} είδη θέλουν παραγγελία.` : " Η αποθήκη είναι εντάξει."}
+            {!ingredients.length
+              ? " Η αποθήκη είναι άδεια: δεν έχουν περαστεί είδη."
+              : low.length
+                ? ` ${low.length} ${low.length === 1 ? "είδος αποθήκης είναι" : "είδη αποθήκης είναι"} κάτω από το ελάχιστο.`
+                : ` Αποθήκη: κανένα από τα ${ingredients.length} είδη δεν είναι κάτω από το ελάχιστο.`}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -210,7 +215,11 @@ export default async function AdminOverviewPage() {
               })}
             </ul>
           ) : (
-            <div className="text-sm text-emerald-700">✓ Όλα τα είδη πάνω από το ελάχιστο απόθεμα.</div>
+            <div className={`text-sm ${ingredients.length ? "text-emerald-700" : "text-ink-3"}`}>
+              {ingredients.length
+                ? `✓ Και τα ${ingredients.length} είδη είναι πάνω από το ελάχιστο απόθεμα που έχεις ορίσει.`
+                : "Δεν έχουν περαστεί είδη στην αποθήκη. Όταν περάσεις είδη με «ελάχιστο απόθεμα», εδώ θα φαίνεται ποια θέλουν παραγγελία."}
+            </div>
           )}
         </div>
         <div className="glass p-4 space-y-3">

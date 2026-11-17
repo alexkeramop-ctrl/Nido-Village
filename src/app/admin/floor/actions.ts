@@ -5,13 +5,15 @@ import type { FloorPlan } from "@/lib/floor-plan";
 import { run } from "@/server/action";
 import { requireRole } from "@/server/auth";
 import { saveAsset } from "@/server/services/assets";
-import { autoLayoutArea, saveFloorLayout, saveTablePositions, setAreaMap, type TablePosition } from "@/server/services/floor";
+import { addTableToArea, autoLayoutArea, createRoomPreset, createRoomWithTables, removeArea, removeTable, saveFloorLayout, saveTablePositions, setAreaMap, type NewRoomInput, type TablePosition } from "@/server/services/floor";
 
 const SHAPES: TableShape[] = ["square", "round", "wide"];
 const MAX_UPLOAD = 3 * 1024 * 1024;
 
 function revalidate() {
   revalidatePath("/admin/floor");
+  revalidatePath("/admin/tables");
+  revalidatePath("/admin/qr");
   revalidatePath("/pda");
 }
 
@@ -99,5 +101,63 @@ export async function removeAreaMapAction(areaId: number) {
     await requireRole("manager", "admin");
     await setAreaMap(areaIdOf(areaId), null);
     revalidate();
+  });
+}
+
+/** Νέο δωμάτιο με τραπέζια σε πλέγμα (π.χ. 20 τραπέζια, 5 ανά σειρά). */
+export async function createRoomAction(input: NewRoomInput) {
+  return run(async () => {
+    await requireRole("manager", "admin");
+    const r = await createRoomWithTables({
+      name: String(input?.name ?? ""),
+      count: Number(input?.count),
+      cols: Number(input?.cols),
+      prefix: input?.prefix ? String(input.prefix) : undefined,
+      seats: input?.seats === undefined ? undefined : Number(input.seats),
+    });
+    revalidate();
+    return r;
+  });
+}
+
+/** Έτοιμο ξεκίνημα: Παιδική, Σαλόνι, Μπαλκόνι με 20 τραπέζια το καθένα. */
+export async function createRoomPresetAction() {
+  return run(async () => {
+    await requireRole("manager", "admin");
+    const r = await createRoomPreset();
+    revalidate();
+    return r;
+  });
+}
+
+/** Προσθήκη ενός τραπεζιού στο δωμάτιο (επόμενο όνομα, ελεύθερο σημείο). */
+export async function addTableAction(areaId: number) {
+  return run(async () => {
+    await requireRole("manager", "admin");
+    const row = await addTableToArea(areaIdOf(areaId));
+    revalidate();
+    return { id: row.id, name: row.name };
+  });
+}
+
+/** Αφαίρεση τραπεζιού από το δωμάτιο. */
+export async function removeTableAction(tableId: number) {
+  return run(async () => {
+    await requireRole("manager", "admin");
+    const id = Number(tableId);
+    if (!Number.isInteger(id) || id <= 0) throw new Error("Μη έγκυρο τραπέζι");
+    const mode = await removeTable(id);
+    revalidate();
+    return mode;
+  });
+}
+
+/** Αφαίρεση ολόκληρου δωματίου (με τα τραπέζια του). */
+export async function removeRoomAction(areaId: number) {
+  return run(async () => {
+    await requireRole("manager", "admin");
+    const r = await removeArea(areaIdOf(areaId));
+    revalidate();
+    return r;
   });
 }

@@ -204,3 +204,18 @@ th.th-sortable[aria-sort="descending"]::after {
     content: none;
   }
 }
+
+/* Συρτάρι μενού στο κινητό */
+@keyframes nav-drawer-in {
+  from {
+    transform: translateX(-100%);
+  }
+}
+.nav-drawer {
+  animation: nav-drawer-in 0.22s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-drawer {
+    animation: none;
+  }
+}

@@ -3,6 +3,7 @@ import type { TableShape } from "@/db/schema";
 import { getDb, schema } from "@/db";
 import { emit } from "@/server/events";
 import { sanitizePlan, type FloorPlan } from "@/lib/floor-plan";
+import { MAX_ROOM_COLS, MAX_ROOM_TABLES, ROOM_PRESET, defaultPrefix, freeSpot, gridPositions, nextTableName } from "@/lib/floor-rooms";
 import { lineTotalCents } from "./billing";
 
 export async function listAreas(includeInactive = false) {
@@ -220,4 +221,125 @@ export async function findOpenSessionForTable(tableId: number) {
   return db.query.tableSessions.findFirst({
     where: and(eq(schema.tableSessions.tableId, tableId), inArray(schema.tableSessions.status, ["open", "billed"])),
   });
+}
+
+/* ------------------------- Δωμάτια με τραπέζια σε πλέγμα ------------------------- */
+
+export type NewRoomInput = { name: string; count: number; cols: number; prefix?: string; seats?: number };
+
+/**
+ * Νέο δωμάτιο (χώρος) με `count` τραπέζια τοποθετημένα σε πλέγμα `cols` στηλών.
+ * Τα ονόματα των τραπεζιών είναι πρόθεμα + αριθμός και πρέπει να είναι μοναδικά σε όλο το κατάστημα.
+ */
+export async function createRoomWithTables(input: NewRoomInput) {
+  const name = input.name.trim().slice(0, 40);
+  if (!name) throw new Error("Απαιτείται όνομα δωματίου");
+  const count = Math.round(input.count);
+  const cols = Math.round(input.cols);
+  if (!Number.isFinite(count) || count < 0 || count > MAX_ROOM_TABLES) throw new Error(`Τα τραπέζια πρέπει να είναι από 0 έως ${MAX_ROOM_TABLES}`);
+  if (!Number.isFinite(cols) || cols < 1 || cols > MAX_ROOM_COLS) throw new Error(`Τα τραπέζια ανά σειρά πρέπει να είναι από 1 έως ${MAX_ROOM_COLS}`);
+  const seats = Math.max(1, Math.min(30, Math.round(input.seats ?? 4)));
+  const prefix = (input.prefix?.trim() || defaultPrefix(name)).slice(0, 4);
+  const db = await getDb();
+  return db
+    .transaction(async (tx) => {
+      const areas = await tx.select().from(schema.areas);
+      if (areas.some((a) => a.active && a.name.toLocaleLowerCase("el") === name.toLocaleLowerCase("el"))) throw new Error(`Υπάρχει ήδη δωμάτιο «${name}»`);
+      const names = Array.from({ length: count }, (_, i) => `${prefix}${i + 1}`);
+      if (names.length) {
+        const clash = await tx.select({ name: schema.tables.name }).from(schema.tables).where(and(inArray(schema.tables.name, names), eq(schema.tables.active, true)));
+        if (clash.length) throw new Error(`Υπάρχουν ήδη τραπέζια με πρόθεμα «${prefix}» (π.χ. ${clash[0].name}). Διάλεξε άλλο πρόθεμα.`);
+      }
+      const bar = (await tx.select().from(schema.printStations)).find((s) => s.kind === "bar" && s.enabled);
+      const [area] = await tx
+        .insert(schema.areas)
+        .values({ name, sort: areas.reduce((m, a) => Math.max(m, a.sort), 0) + 1, barStationId: bar?.id ?? null })
+        .returning();
+      const pos = gridPositions(count, cols);
+      if (count) await tx.insert(schema.tables).values(names.map((n, i) => ({ areaId: area.id, name: n, seats, sort: i + 1, posX: pos[i].posX, posY: pos[i].posY })));
+      return { areaId: area.id, tables: count };
+    })
+    .then((r) => {
+      emit({ type: "floor.changed" });
+      return r;
+    });
+}
+
+/** Έτοιμο ξεκίνημα: Παιδική, Σαλόνι, Μπαλκόνι με 20 τραπέζια (4 σειρές × 5) το καθένα. Όσα υπάρχουν ήδη παραλείπονται. */
+export async function createRoomPreset(): Promise<{ created: string[]; skipped: string[] }> {
+  const existing = new Set((await listAreas()).map((a) => a.name.toLocaleLowerCase("el")));
+  const created: string[] = [];
+  const skipped: string[] = [];
+  for (const r of ROOM_PRESET) {
+    if (existing.has(r.name.toLocaleLowerCase("el"))) {
+      skipped.push(r.name);
+      continue;
+    }
+    await createRoomWithTables({ name: r.name, prefix: r.prefix, count: 20, cols: 5 });
+    created.push(r.name);
+  }
+  return { created, skipped };
+}
+
+/** Προσθέτει ένα τραπέζι στο δωμάτιο: επόμενο όνομα της σειράς, σε ελεύθερο σημείο της κάτοψης. */
+export async function addTableToArea(areaId: number, seats = 4) {
+  const db = await getDb();
+  const area = await db.query.areas.findFirst({ where: eq(schema.areas.id, areaId), with: { tables: true } });
+  if (!area || !area.active) throw new Error("Το δωμάτιο δεν βρέθηκε");
+  const active = area.tables.filter((t) => t.active);
+  if (active.length >= 200) throw new Error("Έως 200 τραπέζια ανά δωμάτιο");
+  const everywhere = await db.select({ name: schema.tables.name }).from(schema.tables).where(eq(schema.tables.active, true));
+  const name = nextTableName(active.map((t) => t.name), area.name, new Set(everywhere.map((t) => t.name)));
+  const spot = freeSpot(active.filter((t) => t.posX !== null && t.posY !== null).map((t) => ({ posX: t.posX!, posY: t.posY! })));
+  const [row] = await db
+    .insert(schema.tables)
+    .values({ areaId, name, seats: Math.max(1, Math.min(30, Math.round(seats))), sort: active.reduce((m, t) => Math.max(m, t.sort), 0) + 1, ...spot })
+    .returning();
+  emit({ type: "floor.changed" });
+  return row;
+}
+
+/**
+ * Αφαιρεί τραπέζι. Με ανοιχτό λογαριασμό δεν αφαιρείται. Αν έχει ιστορικό πωλήσεων κρύβεται
+ * (για να μείνουν σωστές οι αναφορές), αλλιώς διαγράφεται οριστικά.
+ */
+export async function removeTable(tableId: number): Promise<"deleted" | "archived"> {
+  const db = await getDb();
+  const table = await db.query.tables.findFirst({ where: eq(schema.tables.id, tableId) });
+  if (!table || !table.active) throw new Error("Το τραπέζι δεν βρέθηκε");
+  const sessions = await db.select({ status: schema.tableSessions.status }).from(schema.tableSessions).where(eq(schema.tableSessions.tableId, tableId));
+  if (sessions.some((s) => s.status === "open" || s.status === "billed")) throw new Error(`Το τραπέζι ${table.name} έχει ανοιχτό λογαριασμό`);
+  if (sessions.length) {
+    await db.update(schema.tables).set({ active: false, posX: null, posY: null }).where(eq(schema.tables.id, tableId));
+    emit({ type: "floor.changed" });
+    return "archived";
+  }
+  await db.delete(schema.tables).where(eq(schema.tables.id, tableId));
+  emit({ type: "floor.changed" });
+  return "deleted";
+}
+
+/**
+ * Αφαιρεί ολόκληρο δωμάτιο μαζί με τα τραπέζια του. Δεν γίνεται αν κάποιο τραπέζι έχει ανοιχτό λογαριασμό.
+ * Το δωμάτιο και τα τραπέζια κρύβονται (δεν σβήνονται), ώστε παλιές πωλήσεις και κρατήσεις να μείνουν σωστές.
+ */
+export async function removeArea(areaId: number): Promise<{ name: string; tables: number }> {
+  const db = await getDb();
+  const area = await db.query.areas.findFirst({ where: eq(schema.areas.id, areaId), with: { tables: true } });
+  if (!area || !area.active) throw new Error("Το δωμάτιο δεν βρέθηκε");
+  const ids = area.tables.map((t) => t.id);
+  if (ids.length) {
+    const open = await db
+      .select({ id: schema.tableSessions.id })
+      .from(schema.tableSessions)
+      .where(and(inArray(schema.tableSessions.tableId, ids), inArray(schema.tableSessions.status, ["open", "billed"])));
+    if (open.length) throw new Error(`Το δωμάτιο «${area.name}» έχει τραπέζια με ανοιχτό λογαριασμό`);
+  }
+  const activeTables = area.tables.filter((t) => t.active).length;
+  await db.transaction(async (tx) => {
+    if (ids.length) await tx.update(schema.tables).set({ active: false }).where(eq(schema.tables.areaId, areaId));
+    await tx.update(schema.areas).set({ active: false }).where(eq(schema.areas.id, areaId));
+  });
+  emit({ type: "floor.changed" });
+  return { name: area.name, tables: activeTables };
 }
