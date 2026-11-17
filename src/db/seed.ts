@@ -409,10 +409,28 @@ export async function seedClean(db: Db): Promise<boolean> {
     { name: "Υπερμειωμένος 6%", ratePct: "6.00", mydataCategory: 3 },
     { name: "Απαλλαγή 0%", ratePct: "0.00", mydataCategory: 7 },
   ]);
-  await db.insert(schema.printStations).values([
-    { name: "Κουζίνα", kind: "kitchen", driver: "console", sort: 1 },
-    { name: "Μπαρ", kind: "bar", driver: "console", sort: 2 },
-    { name: "Ταμείο", kind: "receipt", driver: "console", sort: 3, drawerKick: true },
+  const [kitchen, bar] = await db
+    .insert(schema.printStations)
+    .values([
+      { name: "Κουζίνα", kind: "kitchen", driver: "console", sort: 1 },
+      { name: "Μπαρ", kind: "bar", driver: "console", sort: 2 },
+      { name: "Ταμείο", kind: "receipt", driver: "console", sort: 3, drawerKick: true },
+    ])
+    .returning();
+  // Κατηγορίες μενού (χωρίς είδη): ροφήματα στο μπαρ, φαγητά στην κουζίνα.
+  await db.insert(schema.categories).values([
+    { name: "Καφέδες", sort: 1, color: "#6b4f2a", printStationId: bar.id },
+    { name: "Ροφήματα", sort: 2, color: "#a16207", printStationId: bar.id },
+    { name: "Αναψυκτικά & Τσάι", sort: 3, color: "#1d4ed8", printStationId: bar.id },
+    { name: "Smoothies", sort: 4, color: "#be185d", printStationId: bar.id },
+    { name: "Μπύρες", sort: 5, color: "#ca8a04", printStationId: bar.id },
+    { name: "Ποτά", sort: 6, color: "#6d28d9", printStationId: bar.id },
+    { name: "Brunch", sort: 7, color: "#ea580c", printStationId: kitchen.id },
+    { name: "Hot dog", sort: 8, color: "#dc2626", printStationId: kitchen.id },
+    { name: "Burger", sort: 9, color: "#b45309", printStationId: kitchen.id },
+    { name: "Πίτσα", sort: 10, color: "#e11d48", printStationId: kitchen.id },
+    { name: "Club Sandwich", sort: 11, color: "#15803d", printStationId: kitchen.id },
+    { name: "Παγωτά", sort: 12, color: "#7c3aed", printStationId: bar.id },
   ]);
   await db.insert(schema.settings).values({
     key: "venue",

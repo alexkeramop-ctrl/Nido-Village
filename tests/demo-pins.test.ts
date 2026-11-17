@@ -36,6 +36,7 @@ describe("καθαρό ξεκίνημα online", () => {
       await seedClean(db);
       expect((await db.select().from(schema.employees)).map((e) => e.role)).toEqual(["admin"]);
       expect(await db.select().from(schema.products)).toHaveLength(0);
+      expect((await db.select().from(schema.categories)).map((c) => c.name)).toContain("Hot dog");
       expect(await db.select().from(schema.ingredients)).toHaveLength(0);
       expect(await db.select().from(schema.tables)).toHaveLength(0);
       expect(await db.select().from(schema.areas)).toHaveLength(0);
