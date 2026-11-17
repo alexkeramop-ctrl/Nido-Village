@@ -8,6 +8,8 @@ export type VenueSettings = {
   taxOffice: string;
   address: string;
   phone: string;
+  /** Email επικοινωνίας: εμφανίζεται στις δημόσιες σελίδες (παραγγελία QR, κατάσταση) και στην απόδειξη. Κενό = δεν εμφανίζεται. */
+  email: string;
   /** Προεπιλεγμένος αριθμός πιάτων (courses) στο PDA. */
   courses: number;
 };
@@ -18,6 +20,7 @@ export const DEFAULT_SETTINGS: VenueSettings = {
   taxOffice: "",
   address: "",
   phone: "",
+  email: "",
   courses: 1,
 };
 

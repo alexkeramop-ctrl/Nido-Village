@@ -7,6 +7,7 @@ import type { Db } from "./index";
 import * as schema from "./schema";
 import type { PlanRoom } from "@/lib/floor-plan";
 import { encryptPin, hashPin } from "@/server/pin";
+import { ensureDefaultRegisters } from "@/server/services/registers";
 
 /** PIN του demo. Χωρίς NIDO_ADMIN_PIN: τα γνωστά 1234/4444/… . Με NIDO_ADMIN_PIN: αυτό για τον διαχειριστή, τυχαία για τους άλλους. */
 export function demoPins(adminPin: string | undefined) {
@@ -370,6 +371,8 @@ export async function seedDemo(db: Db): Promise<boolean> {
   if (!pins.custom) {
     await db.insert(schema.partnerUsers).values({ name: "Συνεταίρος (demo)", email: "partner@nido.demo", passwordHash: hashPin("nido-demo-2026") });
   }
+  // Ταμεία self-service: «Ταμείο 1» και «Ταμείο 2» (ο διαχειριστής προσθέτει/μετονομάζει από τις Ρυθμίσεις).
+  await ensureDefaultRegisters(db);
   return true;
 }
 
@@ -420,6 +423,7 @@ export async function seedClean(db: Db): Promise<boolean> {
     key: "venue",
     value: { venueName: "Nido Village", vatNumber: "", taxOffice: "", address: "Βασιλικά Θέρμης, 57006", phone: "694 627 3127", courses: 1 },
   });
+  await ensureDefaultRegisters(db);
   return true;
 }
 

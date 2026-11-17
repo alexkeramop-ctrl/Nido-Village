@@ -1,11 +1,11 @@
 "use client";
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import type { ItemStatus, OrderType, StationKind } from "@/db/schema";
+import type { ItemStatus, OrderType, SessionSource, StationKind } from "@/db/schema";
 import { useToast } from "@/components/ui";
 import { useNow } from "@/components/ops/use-now";
 import { ORDER_TYPE_LABEL, courseLabel, fmtElapsed, fmtTime } from "@/components/ops/labels";
-import { bumpOrderAction, setItemStatusAction } from "./actions";
+import { bumpOrderAction, markPickedUpAction, setItemStatusAction } from "./actions";
 
 export type KdsItemDto = { id: number; qty: number; name: string; modifiers: string[]; notes: string | null; course: number; status: string };
 export type KdsTicketDto = {
@@ -17,8 +17,13 @@ export type KdsTicketDto = {
   roundNo: number;
   createdAt: string;
   notes: string | null;
+  buzzerNo: number | null;
+  customerName: string | null;
+  source: SessionSource;
+  paid: boolean;
   items: KdsItemDto[];
 };
+export type KdsReadyDto = { sessionId: number; buzzerNo: number | null; name: string; customerName: string; readyAt: string; paid: boolean };
 export type KdsStationDto = { id: number; name: string; kind: StationKind };
 
 const WARN_MS = 10 * 60 * 1000;
@@ -28,12 +33,13 @@ function nextStatus(s: string): "preparing" | "ready" {
   return s === "preparing" ? "ready" : "preparing";
 }
 
-export function KdsScreen({ stations, stationId, tickets }: { stations: KdsStationDto[]; stationId: number | null; tickets: KdsTicketDto[] }) {
+export function KdsScreen({ stations, stationId, tickets, ready }: { stations: KdsStationDto[]; stationId: number | null; tickets: KdsTicketDto[]; ready: KdsReadyDto[] }) {
   const now = useNow();
   const { toast, element } = useToast();
   const [, start] = useTransition();
   const [optimistic, setOptimistic] = useState<Record<number, ItemStatus>>({});
   const [bumping, setBumping] = useState<number | null>(null);
+  const [handing, setHanding] = useState<number | null>(null);
 
   const tapItem = (item: KdsItemDto) => {
     const status = nextStatus(optimistic[item.id] ?? item.status);
@@ -54,7 +60,19 @@ export function KdsScreen({ stations, stationId, tickets }: { stations: KdsStati
     start(async () => {
       const r = await bumpOrderAction(t.orderId, stationId);
       if (!r.ok) toast(r.error, "danger");
+      // Το «ΕΤΟΙΜΟ» είναι το σήμα για τον βομβητή — αλλά μόνο όταν είναι έτοιμα τα είδη ΟΛΩΝ των σταθμών.
+      else if (r.data?.allReady) toast(r.data.buzzerNo ? `🔔 Χτύπα τον βομβητή ${r.data.buzzerNo}` : `Έτοιμη η παραγγελία ${r.data.name}`);
+      else if (r.data) toast(r.data.buzzerNo ? `Έτοιμο από εδώ · ο βομβητής ${r.data.buzzerNo} περιμένει και άλλο σταθμό` : "Έτοιμο από εδώ · περιμένει και άλλος σταθμός");
       setBumping(null);
+    });
+  };
+
+  const handOver = (r: KdsReadyDto) => {
+    setHanding(r.sessionId);
+    start(async () => {
+      const res = await markPickedUpAction(r.sessionId);
+      if (!res.ok) toast(res.error, "danger");
+      setHanding(null);
     });
   };
 
@@ -69,6 +87,37 @@ export function KdsScreen({ stations, stationId, tickets }: { stations: KdsStati
           {tickets.length} {tickets.length === 1 ? "παραγγελία" : "παραγγελίες"}
         </span>
       </div>
+
+      {ready.length > 0 && (
+        <section aria-labelledby="kds-ready" className="rounded-2xl border-2 border-emerald-500 bg-emerald-950/50 p-3">
+          <h2 id="kds-ready" className="text-sm font-bold uppercase tracking-wide text-emerald-300 mb-2">
+            Έτοιμες – προς παράδοση <span className="num">({ready.length})</span>
+          </h2>
+          <ul className="flex flex-wrap gap-2">
+            {ready.map((r) => (
+              <li key={r.sessionId} className="flex items-center gap-2 rounded-xl bg-emerald-700/70 pl-3 pr-1.5 py-1.5">
+                <span className="leading-tight">
+                  <span className="block text-xl font-black num">{r.buzzerNo ? `🔔 ${r.buzzerNo}` : r.name}</span>
+                  <span className="block text-[11px] text-emerald-100 num">
+                    {r.customerName && !r.name.includes(r.customerName) ? `${r.customerName} · ` : ""}
+                    {fmtTime(r.readyAt)}
+                    {!r.paid ? " · απλήρωτη" : ""}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  disabled={handing === r.sessionId}
+                  onClick={() => handOver(r)}
+                  aria-label={`Παραδόθηκε: ${r.buzzerNo ? `Βομβητής ${r.buzzerNo}` : r.name}`}
+                  className="rounded-lg bg-white/15 hover:bg-white/25 px-3 py-2 text-sm font-semibold touch disabled:opacity-50"
+                >
+                  {handing === r.sessionId ? "…" : "Παραδόθηκε"}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {tickets.length === 0 ? (
         <div className="rounded-2xl border border-dark-3 bg-dark-2 p-10 text-center">
@@ -89,11 +138,21 @@ export function KdsScreen({ stations, stationId, tickets }: { stations: KdsStati
             return (
               <article key={t.orderId} className={`rounded-2xl border-2 ${tone} flex flex-col overflow-hidden`}>
                 <header className="px-3 py-2 border-b border-white/10 flex items-start gap-2">
+                  {t.buzzerNo !== null && (
+                    <div aria-label={`Βομβητής ${t.buzzerNo}`} className="shrink-0 rounded-xl bg-amber-400 text-black px-2.5 py-1.5 flex items-center gap-1 leading-none">
+                      <span aria-hidden className="text-xl">
+                        🔔
+                      </span>
+                      <span className="text-4xl font-black num">{t.buzzerNo}</span>
+                    </div>
+                  )}
                   <div className="min-w-0 flex-1">
                     <div className="text-2xl font-black leading-tight truncate">{t.tableName}</div>
+                    {t.customerName && !t.tableName.includes(t.customerName) && <div className="text-sm font-semibold text-slate-100 truncate">{t.customerName}</div>}
                     <div className="text-xs text-slate-300 truncate">
-                      <span className="font-semibold tracking-wide">{ORDER_TYPE_LABEL[t.orderType]}</span> · {t.waiter} · Γύρος {t.roundNo}
+                      <span className="font-semibold tracking-wide">{t.source === "till" ? "ΤΑΜΕΙΟ" : ORDER_TYPE_LABEL[t.orderType]}</span> · {t.waiter} · Γύρος {t.roundNo}
                     </div>
+                    {t.source === "qr" && !t.paid && <div className="mt-0.5 inline-block rounded bg-red-500/30 text-red-100 text-[11px] font-bold px-1.5 py-0.5">ΔΕΝ ΕΧΕΙ ΠΛΗΡΩΘΕΙ ΑΚΟΜΗ</div>}
                   </div>
                   <div className="text-right shrink-0">
                     <div className={`text-2xl font-bold num leading-tight ${timerTone}`} suppressHydrationWarning>
@@ -145,9 +204,10 @@ export function KdsScreen({ stations, stationId, tickets }: { stations: KdsStati
                   type="button"
                   disabled={bumping === t.orderId}
                   onClick={() => bump(t)}
+                  aria-label={t.buzzerNo !== null ? `Έτοιμο, βομβητής ${t.buzzerNo}` : `Έτοιμο, ${t.tableName}`}
                   className="m-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-lg py-3 touch active:scale-[0.98] disabled:opacity-50"
                 >
-                  {bumping === t.orderId ? "..." : "ΕΤΟΙΜΟ"}
+                  {bumping === t.orderId ? "..." : t.buzzerNo !== null ? `ΕΤΟΙΜΟ · 🔔 ${t.buzzerNo}` : "ΕΤΟΙΜΟ"}
                 </button>
               </article>
             );

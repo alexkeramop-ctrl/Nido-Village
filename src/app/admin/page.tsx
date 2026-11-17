@@ -85,9 +85,9 @@ export default async function AdminOverviewPage() {
       {/* Σήμερα */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Tile label="Τζίρος σήμερα" value={eur(s.grossCents)} sub={`${s.sessions} λογαριασμοί · μέση ${eur(s.avgTicketCents)}`} hi />
-        <Tile label="Ανοιχτά τραπέζια" value={String(dash.openSessions)} sub={`${eur(dash.openCents)} σε εξέλιξη`} accent={dash.openSessions ? "amber" : undefined} href="/pda" />
+        <Tile label="Προς πληρωμή" value={String(dash.openSessions)} sub={`${eur(dash.openCents)} περιμένουν στο ταμείο`} accent={dash.openSessions ? "amber" : undefined} href="/cashier" />
         <Tile label="Κουζίνα & μπαρ" value={String(dash.pendingKitchen)} sub="είδη σε αναμονή" accent={dash.pendingKitchen > 8 ? "rose" : undefined} href="/kds" />
-        <Tile label="Παραγγελίες QR" value={String(pickup.length)} sub={pickup.length ? `${pickup.filter((p) => p.status === "ready").length} έτοιμες για παραλαβή` : "καμία σε αναμονή"} href="/admin/qr" accent={pickup.length ? "amber" : undefined} />
+        <Tile label="Παραλαβές σε αναμονή" value={String(pickup.length)} sub={pickup.length ? `${pickup.filter((p) => p.status === "ready").length} έτοιμες · περιμένουν τον πελάτη` : "καμία σε αναμονή"} href="/pickup" accent={pickup.length ? "amber" : undefined} />
       </div>
 
       {/* Μήνας: έσοδα / έξοδα */}
