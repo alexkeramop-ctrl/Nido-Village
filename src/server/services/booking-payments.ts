@@ -122,10 +122,16 @@ export async function recordEventPayment(input: PaymentInput, employeeId: number
     },
     employeeId,
   );
+  const summary = (await eventPayments(event.id)).summary;
+  // Δύο ταυτόχρονες καταχωρήσεις (π.χ. από δύο συσκευές) περνούν και οι δύο τον παραπάνω έλεγχο:
+  // αν μαζί ξεπέρασαν την τιμή, αυτή εδώ αναιρείται ώστε να μη μείνει ποτέ είσπραξη πάνω από το υπόλοιπο.
+  if (summary.priceCents > 0 && summary.paidCents > summary.priceCents) {
+    await deleteFinanceEntry(entry.id, employeeId);
+    throw new Error("Καταχωρήθηκε ταυτόχρονα άλλη πληρωμή για αυτή την κράτηση. Δες το νέο υπόλοιπο και δοκίμασε ξανά.");
+  }
   const db = await getDb();
   await audit(db, employeeId, "event_payment", "event", event.id, { paymentId: entry.id, type: input.type, method: input.method, amountCents: input.amountCents, date: input.date });
   emit({ type: "catalog.changed" });
-  const summary = (await eventPayments(event.id)).summary;
   const warning = before.priceCents > 0 ? null : "Η κράτηση δεν έχει τιμή: η πληρωμή καταχωρήθηκε, αλλά δεν υπολογίζεται υπόλοιπο. Όρισε τιμή στην κράτηση.";
   return { paymentId: entry.id, summary, warning };
 }
@@ -165,6 +171,7 @@ export async function listBookingsDue(): Promise<{ rows: DueRow[]; totalCents: n
       startTime: e.startTime,
       customerName: e.customerName,
       customerPhone: e.customerPhone,
+      depositCents: e.depositCents,
       pay,
       daysUntil: daysBetween(today, e.date),
     });

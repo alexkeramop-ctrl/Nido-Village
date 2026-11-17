@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { Badge, EmptyState, Money } from "@/components/ui";
-import { InfoBox, PageHeader, Section, TableWrap } from "@/components/admin/common";
+import { InfoBox, PageHeader, Section, TableWrap, useActionRunner } from "@/components/admin/common";
 import { fmtIsoDate } from "@/components/admin/format";
 import { LiveRefresh } from "@/components/live";
 import { EVENT_STATUS_TONE, EVENT_TYPE_DOT, SCOPES } from "@/components/admin/events/meta";
@@ -47,6 +47,7 @@ export function DueView({
   typeLabels: Record<EventType, string>;
   statusLabels: Record<EventStatus, string>;
 }) {
+  const runner = useActionRunner();
   const [filter, setFilter] = useState<Filter>("all");
   const [paying, setPaying] = useState<DueRow | null>(null);
   const shown = rows.filter((r) => (filter === "overdue" ? r.daysUntil < 0 : filter === "upcoming" ? r.daysUntil >= 0 : true));
@@ -94,6 +95,7 @@ export function DueView({
 
   return (
     <div className="space-y-4">
+      {runner.toastElement}
       <LiveRefresh types={["catalog.changed"]} />
       <PageHeader title="Οφειλές κρατήσεων" subtitle="Κρατήσεις που δεν έχουν εξοφληθεί, με σειρά ημερομηνίας. Οι ακυρωμένες δεν εμφανίζονται." />
 
@@ -235,13 +237,13 @@ export function DueView({
                           </div>
                         )}
                       </td>
-                      <td className="text-right num">
+                      <td className="text-right num whitespace-nowrap">
                         <Money cents={r.pay.priceCents} />
                       </td>
-                      <td className="text-right num">
+                      <td className="text-right num whitespace-nowrap">
                         <Money cents={r.pay.paidCents} />
                       </td>
-                      <td className="text-right num font-semibold text-danger">
+                      <td className="text-right num whitespace-nowrap font-semibold text-danger">
                         <Money cents={r.pay.balanceCents} />
                       </td>
                       <td>{actions(r)}</td>
@@ -265,7 +267,7 @@ export function DueView({
         )}
       </Section>
 
-      <EventPaymentsModal event={paying ? { id: paying.id, title: paying.title, date: paying.date } : null} today={today} isAdmin={isAdmin} onClose={() => setPaying(null)} />
+      <EventPaymentsModal event={paying ? { id: paying.id, title: paying.title, date: paying.date, depositCents: paying.depositCents } : null} today={today} isAdmin={isAdmin} runner={runner} onClose={() => setPaying(null)} />
     </div>
   );
 }

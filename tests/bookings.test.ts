@@ -135,6 +135,17 @@ describe("πληρωμές κρατήσεων", () => {
     await expect(deleteEventPayment(ev.id, dep.paymentId, admin.id)).rejects.toThrow(/δεν βρέθηκε/);
   });
 
+  it("δύο ταυτόχρονες πληρωμές δεν αφήνουν ποτέ είσπραξη πάνω από την τιμή", async () => {
+    const ev = await upsertEvent({ title: "Γάμος με δύο ταμεία", type: "wedding", status: "confirmed", date: addDays(today, 60), priceCents: 100000 }, admin.id);
+    const pay = (amountCents: number) => recordEventPayment({ eventId: ev.id, date: today, amountCents, method: "cash", type: "settlement" }, admin.id);
+    const out = await Promise.allSettled([pay(100000), pay(100000), pay(60000)]);
+    const detail = await eventPayments(ev.id);
+    expect(detail.summary.paidCents).toBeLessThanOrEqual(100000);
+    // Όσες απάντησαν «εντάξει» είναι ακριβώς όσες έμειναν γραμμένες (καμία «χαμένη» ή διπλή κίνηση).
+    expect(detail.payments).toHaveLength(out.filter((o) => o.status === "fulfilled").length);
+    expect(detail.payments.reduce((a, p) => a + p.amountCents, 0)).toBe(detail.summary.paidCents);
+  });
+
   it("χωρίς τιμή επιτρέπει την πληρωμή με προειδοποίηση· σε ακυρωμένη κράτηση την αρνείται", async () => {
     const free = await upsertEvent({ title: "Σχολική εκδρομή", type: "school_trip", status: "confirmed", date: addDays(today, 5), priceCents: 0 }, admin.id);
     const r = await recordEventPayment({ eventId: free.id, date: today, amountCents: 7000, method: "cash", type: "deposit" }, admin.id);
@@ -278,10 +289,14 @@ describe("πελατολόγιο", () => {
     await saveCustomer({ name: "=HYPERLINK(1)", phone: "6970002222" }, admin.id);
     expect((await customersCsv("all", admin.id)).csv).toContain(`"'=HYPERLINK(1)"`);
 
-    // Διαγραφή: η κράτηση μένει, χωρίς πελάτη.
+    // Διαγραφή: η κράτηση μένει, χωρίς πελάτη και χωρίς τα στοιχεία επικοινωνίας του.
     await deleteCustomer(created.id, admin.id);
-    expect((await db.query.events.findFirst({ where: eq(schema.events.id, ev.id) }))!.customerId).toBeNull();
+    expect(await db.query.events.findFirst({ where: eq(schema.events.id, ev.id) })).toMatchObject({ title: "Πάρτι Νίκου", customerId: null, customerPhone: null, customerEmail: null });
     await expect(deleteCustomer(created.id, admin.id)).rejects.toThrow(/δεν βρέθηκε/);
+    // Ο διαγραμμένος πελάτης δεν ξαναδημιουργείται από τις παλιές του κρατήσεις.
+    await linkUnlinkedEvents();
+    expect(await findCustomerByPhone("6945557777")).toBeNull();
+    expect((await listCustomers()).some((c) => c.id === created.id)).toBe(false);
   });
 
   it("συνδέει με το πελατολόγιο παλιές κρατήσεις που έχουν τηλέφωνο αλλά όχι πελάτη", async () => {

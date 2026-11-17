@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Badge, Modal, Money } from "@/components/ui";
-import { InfoBox, useActionRunner } from "@/components/admin/common";
+import { InfoBox, type useActionRunner } from "@/components/admin/common";
 import { DateGR } from "@/components/admin/date-gr";
 import { centsToInput, fmtIsoDate } from "@/components/admin/format";
 import { parseEuroToCents } from "@/server/money";
@@ -270,35 +270,36 @@ export function EventPaymentsPanel({
   );
 }
 
-/** Οι πληρωμές μιας κράτησης σε δικό τους παράθυρο (από τη λίστα του ημερολογίου και τις οφειλές). */
+/**
+ * Οι πληρωμές μιας κράτησης σε δικό τους παράθυρο (από τη λίστα του ημερολογίου και τις οφειλές).
+ * Χρησιμοποιεί τον runner της σελίδας, ώστε να υπάρχει ένα μόνο toast στην οθόνη.
+ */
 export function EventPaymentsModal({
   event,
   today,
   isAdmin,
+  runner,
   onClose,
 }: {
   event: { id: number; title: string; date: string; depositCents?: number } | null;
   today: string;
   isAdmin: boolean;
+  runner: Runner;
   onClose: () => void;
 }) {
-  const runner = useActionRunner();
   return (
-    <>
-      {runner.toastElement}
-      <Modal open={event !== null} onClose={onClose} title={event ? `Πληρωμές: ${event.title}` : undefined} wide>
-        {event && (
-          <div className="space-y-3">
-            <div className="text-sm text-ink-3 num">Ημερομηνία εκδήλωσης: {fmtIsoDate(event.date)}</div>
-            <EventPaymentsPanel key={event.id} eventId={event.id} agreedDepositCents={event.depositCents ?? 0} today={today} isAdmin={isAdmin} runner={runner} />
-            <div className="flex justify-end">
-              <button type="button" className="btn-secondary btn-sm" onClick={onClose}>
-                Κλείσιμο
-              </button>
-            </div>
+    <Modal open={event !== null} onClose={onClose} title={event ? `Πληρωμές: ${event.title}` : undefined} wide>
+      {event && (
+        <div className="space-y-3">
+          <div className="text-sm text-ink-3 num">Ημερομηνία εκδήλωσης: {fmtIsoDate(event.date)}</div>
+          <EventPaymentsPanel key={event.id} eventId={event.id} agreedDepositCents={event.depositCents ?? 0} today={today} isAdmin={isAdmin} runner={runner} />
+          <div className="flex justify-end">
+            <button type="button" className="btn-secondary btn-sm" onClick={onClose}>
+              Κλείσιμο
+            </button>
           </div>
-        )}
-      </Modal>
-    </>
+        </div>
+      )}
+    </Modal>
   );
 }

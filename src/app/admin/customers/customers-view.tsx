@@ -92,7 +92,7 @@ export function CustomersView({
   };
 
   const remove = (c: CustomerRow) => {
-    if (!window.confirm(`Διαγραφή του πελάτη «${c.name || formatPhone(c.phone)}»; Οι κρατήσεις του μένουν στο ημερολόγιο, χωρίς σύνδεση με πελάτη.`)) return;
+    if (!window.confirm(`Διαγραφή του πελάτη «${c.name || formatPhone(c.phone)}»; Οι κρατήσεις του μένουν στο ημερολόγιο, αλλά το τηλέφωνο και το email του σβήνονται και από αυτές. Δεν αναιρείται.`)) return;
     run(() => deleteCustomerAction(c.id), { success: "Ο πελάτης διαγράφηκε", onSuccess: () => setModal(null) });
   };
 
@@ -160,14 +160,9 @@ export function CustomersView({
         actions={
           <div className="flex flex-wrap items-center gap-3">
             <Toggle checked={onlyConsent} onChange={setOnlyConsent} label="Μόνο με συγκατάθεση" />
-            <input
-              type="search"
-              className="input py-1.5 text-sm w-full sm:w-64"
-              placeholder="Αναζήτηση: όνομα, τηλέφωνο, email"
-              aria-label="Αναζήτηση πελάτη"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
+            <div className="w-full sm:w-72">
+              <input type="search" className="input" placeholder="Αναζήτηση: όνομα, τηλέφωνο, email" aria-label="Αναζήτηση πελάτη" value={query} onChange={(e) => setQuery(e.target.value)} />
+            </div>
           </div>
         }
       >

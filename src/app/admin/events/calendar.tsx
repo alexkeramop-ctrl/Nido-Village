@@ -454,6 +454,7 @@ export function EventsCalendar({
         event={paying ? { id: paying.id, title: paying.title, date: paying.date, depositCents: paying.depositCents } : null}
         today={today}
         isAdmin={isAdmin}
+        runner={runner}
         onClose={() => setPaying(null)}
       />
 

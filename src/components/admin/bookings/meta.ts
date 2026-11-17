@@ -124,6 +124,8 @@ export type DueRow = {
   startTime: string;
   customerName: string;
   customerPhone: string | null;
+  /** Συμφωνημένη προκαταβολή (προτείνεται ως ποσό στην πρώτη πληρωμή). */
+  depositCents: number;
   pay: PaySummary;
   /** Ημέρες μέχρι την εκδήλωση (αρνητικό = έχει περάσει). */
   daysUntil: number;

@@ -174,12 +174,15 @@ export async function setCustomerConsent(id: number, consent: boolean, employeeI
   return row;
 }
 
-/** Διαγραφή πελάτη (π.χ. αίτημα διαγραφής δεδομένων). Οι κρατήσεις του μένουν, χωρίς σύνδεση με πελάτη. */
+/**
+ * Διαγραφή πελάτη (π.χ. αίτημα διαγραφής δεδομένων). Οι κρατήσεις του μένουν στο ημερολόγιο, αλλά χωρίς τα στοιχεία
+ * επικοινωνίας του (τηλέφωνο, email): έτσι τα δεδομένα σβήνονται πραγματικά και ο πελάτης δεν ξαναδημιουργείται από αυτές.
+ */
 export async function deleteCustomer(id: number, employeeId: number) {
   const db = await getDb();
   const c = await db.query.customers.findFirst({ where: eq(schema.customers.id, id) });
   if (!c) throw new Error("Ο πελάτης δεν βρέθηκε");
-  await db.update(schema.events).set({ customerId: null }).where(eq(schema.events.customerId, id));
+  await db.update(schema.events).set({ customerId: null, customerPhone: null, customerEmail: null }).where(eq(schema.events.customerId, id));
   await db.delete(schema.customers).where(eq(schema.customers.id, id));
   await audit(db, employeeId, "customer_delete", "customer", id, {});
 }
