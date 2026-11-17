@@ -2,6 +2,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import type { TableShape } from "@/db/schema";
 import { getDb, schema } from "@/db";
 import { emit } from "@/server/events";
+import { sanitizePlan, type FloorPlan } from "@/lib/floor-plan";
 import { lineTotalCents } from "./billing";
 
 export async function listAreas(includeInactive = false) {
@@ -72,7 +73,7 @@ export type FloorTable = {
   };
 };
 
-export type FloorArea = { id: number; name: string; mapAssetId: number | null; tables: FloorTable[] };
+export type FloorArea = { id: number; name: string; mapAssetId: number | null; plan: FloorPlan | null; tables: FloorTable[] };
 
 export type TakeawaySession = {
   id: number;
@@ -124,6 +125,7 @@ export async function getFloor(): Promise<{ areas: FloorArea[]; takeaway: Takeaw
       id: a.id,
       name: a.name,
       mapAssetId: a.mapAssetId,
+      plan: a.plan ?? null,
       tables: a.tables.map((t) => ({
         id: t.id,
         name: t.name,
@@ -144,20 +146,46 @@ export type TablePosition = { id: number; posX: number | null; posY: number | nu
 
 const clamp = (v: number) => Math.max(0, Math.min(1000, Math.round(v)));
 
+type Tx = Parameters<Parameters<Awaited<ReturnType<typeof getDb>>["transaction"]>[0]>[0];
+
+async function writePositions(tx: Tx, areaId: number, positions: TablePosition[]) {
+  for (const p of positions) {
+    const set: Partial<typeof schema.tables.$inferInsert> = {
+      posX: p.posX === null ? null : clamp(p.posX),
+      posY: p.posY === null ? null : clamp(p.posY),
+    };
+    if (p.shape) set.shape = p.shape;
+    await tx.update(schema.tables).set(set).where(and(eq(schema.tables.id, p.id), eq(schema.tables.areaId, areaId)));
+  }
+}
+
 /** Αποθηκεύει θέσεις (0–1000 χιλιοστά) και σχήμα τραπεζιών ενός χώρου. */
 export async function saveTablePositions(areaId: number, positions: TablePosition[]) {
   const db = await getDb();
+  await db.transaction((tx) => writePositions(tx, areaId, positions));
+  emit({ type: "floor.changed" });
+}
+
+/** Αποθηκεύει την κάτοψη (δωμάτια) ενός χώρου, αφού την καθαρίσει. Χωρίς δωμάτια γράφεται null. */
+export async function saveAreaPlan(areaId: number, plan: unknown) {
+  return saveFloorLayout(areaId, [], plan);
+}
+
+/** Αποθηκεύει μαζί (σε μία συναλλαγή) τις θέσεις των τραπεζιών και την κάτοψη του χώρου. */
+export async function saveFloorLayout(areaId: number, positions: TablePosition[], plan: unknown): Promise<FloorPlan> {
+  const clean = sanitizePlan(plan);
+  const db = await getDb();
   await db.transaction(async (tx) => {
-    for (const p of positions) {
-      const set: Partial<typeof schema.tables.$inferInsert> = {
-        posX: p.posX === null ? null : clamp(p.posX),
-        posY: p.posY === null ? null : clamp(p.posY),
-      };
-      if (p.shape) set.shape = p.shape;
-      await tx.update(schema.tables).set(set).where(and(eq(schema.tables.id, p.id), eq(schema.tables.areaId, areaId)));
-    }
+    const updated = await tx
+      .update(schema.areas)
+      .set({ plan: clean.rooms.length ? clean : null })
+      .where(eq(schema.areas.id, areaId))
+      .returning({ id: schema.areas.id });
+    if (!updated.length) throw new Error("Ο χώρος δεν βρέθηκε");
+    await writePositions(tx, areaId, positions);
   });
   emit({ type: "floor.changed" });
+  return clean;
 }
 
 /** Ορίζει (ή αφαιρεί) την εικόνα φόντου του χάρτη ενός χώρου. */

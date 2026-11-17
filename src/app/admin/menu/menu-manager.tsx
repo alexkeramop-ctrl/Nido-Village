@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { Badge, EmptyState, Field, Money } from "@/components/ui";
 import { FormModal, PageHeader, Section, TableWrap, Toggle, formValues, useActionRunner } from "@/components/admin/common";
 import { centsToInput } from "@/components/admin/format";
-import { deleteCategoryAction, deleteProductAction, saveCategoryAction, saveProductAction, setAvailabilityAction } from "./actions";
+import { deleteCategoryAction, deleteProductAction, loadStarterMenuAction, saveCategoryAction, saveProductAction, setAvailabilityAction } from "./actions";
 
 type Category = { id: number; name: string; sort: number; color: string; printStationId: number | null; stationName: string | null; active: boolean };
 type Product = {
@@ -121,6 +121,17 @@ export function MenuManager({
         subtitle={`${categories.length} κατηγορίες · ${products.length} είδη`}
         actions={
           <>
+            <button
+              className="btn-secondary btn-sm"
+              disabled={pending}
+              title="Καφέδες, ροφήματα, αναψυκτικά, μπύρες, ποτά, cocktail με ενδεικτικές τιμές"
+              onClick={() => {
+                if (!window.confirm("Θα προστεθούν βασικά είδη μπαρ (καφέδες, αναψυκτικά, τσάι, μπύρες, ποτά, cocktail) με ΕΝΔΕΙΚΤΙΚΕΣ τιμές. Όσα υπάρχουν ήδη δεν αλλάζουν. Συνέχεια;")) return;
+                run(() => loadStarterMenuAction(), { onSuccess: (r) => toast(r.products ? `Προστέθηκαν ${r.products} είδη. Έλεγξε τις τιμές!` : "Όλα τα βασικά είδη υπάρχουν ήδη.") });
+              }}
+            >
+              Φόρτωση βασικού μενού
+            </button>
             <button className="btn-secondary btn-sm" onClick={() => setCatModal({ mode: "new" })}>
               + Νέα κατηγορία
             </button>

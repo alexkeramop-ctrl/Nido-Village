@@ -1,3 +1,4 @@
+import { DateGR } from "@/components/admin/date-gr";
 import { Money } from "@/components/ui";
 import { InfoBox, Section, TableWrap } from "@/components/admin/common";
 import { fmtQty, pluralGr } from "@/components/admin/format";
@@ -46,11 +47,11 @@ export function ConsumptionTab({ from, to, rows }: { from: string; to: string; r
             <input type="hidden" name="tab" value="consumption" />
             <label className="text-xs text-ink-3">
               Από
-              <input type="date" name="from" defaultValue={from} className="input py-1.5 num block" />
+              <DateGR name="from" defaultValue={from} compact />
             </label>
             <label className="text-xs text-ink-3">
               Έως
-              <input type="date" name="to" defaultValue={to} className="input py-1.5 num block" />
+              <DateGR name="to" defaultValue={to} compact />
             </label>
             <button className="btn-secondary btn-sm">Εμφάνιση</button>
           </form>

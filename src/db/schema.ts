@@ -20,6 +20,7 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
+import type { FloorPlan } from "@/lib/floor-plan";
 
 const ts = (name?: string) =>
   name
@@ -75,6 +76,8 @@ export const areas = pgTable("areas", {
   mapAssetId: integer().references(() => assets.id),
   /** Το μπαρ που εξυπηρετεί τον χώρο: τα ροφήματα των τραπεζιών του τυπώνονται εκεί. */
   barStationId: integer().references(() => printStations.id),
+  /** Κάτοψη του χώρου: δωμάτια σε χιλιοστά (0–1000), σχεδιασμένα από τον υπεύθυνο. null = χωρίς δωμάτια. */
+  plan: jsonb().$type<FloorPlan>(),
 });
 
 export type TableShape = "square" | "round" | "wide";

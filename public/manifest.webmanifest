@@ -1,14 +1,23 @@
 {
   "name": "Nido Village",
   "short_name": "Nido",
+  "description": "Παραγγελίες, ταμείο, κρατήσεις και αποθήκη",
+  "lang": "el",
+  "id": "/",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#f8f7f2",
-  "theme_color": "#121a13",
-  "lang": "el",
+  "background_color": "#f4f1e8",
+  "theme_color": "#f4f1e8",
   "icons": [
-    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Παραγγελίες", "url": "/pda" },
+    { "name": "Ταμείο", "url": "/cashier" },
+    { "name": "Διαχείριση", "url": "/admin" }
   ]
 }

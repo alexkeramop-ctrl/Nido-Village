@@ -63,3 +63,8 @@ export const EVENT_STATUS_TONE: Record<EventStatus, "neutral" | "ok" | "warn" | 
   cancelled: "danger",
   done: "brand",
 };
+
+/** Εύρος ώρας για εμφάνιση: γάμοι και βαπτίσεις δείχνουν μόνο την ώρα έναρξης. */
+export function timeRange(e: { type: EventType; startTime: string; endTime: string }): string {
+  return e.type === "wedding" || e.type === "christening" ? e.startTime : `${e.startTime}–${e.endTime}`;
+}

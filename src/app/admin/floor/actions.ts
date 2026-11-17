@@ -1,10 +1,11 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import type { TableShape } from "@/db/schema";
+import type { FloorPlan } from "@/lib/floor-plan";
 import { run } from "@/server/action";
 import { requireRole } from "@/server/auth";
 import { saveAsset } from "@/server/services/assets";
-import { autoLayoutArea, saveTablePositions, setAreaMap, type TablePosition } from "@/server/services/floor";
+import { autoLayoutArea, saveFloorLayout, saveTablePositions, setAreaMap, type TablePosition } from "@/server/services/floor";
 
 const SHAPES: TableShape[] = ["square", "round", "wide"];
 const MAX_UPLOAD = 3 * 1024 * 1024;
@@ -27,24 +28,39 @@ function permille(v: unknown) {
   return Math.max(0, Math.min(1000, Math.round(n)));
 }
 
+function cleanPositions(positions: TablePosition[]): TablePosition[] {
+  if (!Array.isArray(positions) || positions.length > 500) throw new Error("Μη έγκυρα δεδομένα θέσεων");
+  return positions.map((p) => {
+    const tableId = Number(p.id);
+    if (!Number.isInteger(tableId) || tableId <= 0) throw new Error("Μη έγκυρο τραπέζι");
+    const posX = permille(p.posX);
+    const posY = permille(p.posY);
+    if (p.shape !== undefined && !SHAPES.includes(p.shape)) throw new Error("Μη έγκυρο σχήμα τραπεζιού");
+    const pos = posX === null || posY === null ? { posX: null, posY: null } : { posX, posY };
+    return p.shape ? { id: tableId, ...pos, shape: p.shape } : { id: tableId, ...pos };
+  });
+}
+
 /** Αποθηκεύει θέσεις/σχήματα όλων των τραπεζιών ενός χώρου. */
 export async function saveTablePositionsAction(areaId: number, positions: TablePosition[]) {
   return run(async () => {
     await requireRole("manager", "admin");
     const id = areaIdOf(areaId);
-    if (!Array.isArray(positions) || positions.length > 500) throw new Error("Μη έγκυρα δεδομένα θέσεων");
-    const clean: TablePosition[] = positions.map((p) => {
-      const tableId = Number(p.id);
-      if (!Number.isInteger(tableId) || tableId <= 0) throw new Error("Μη έγκυρο τραπέζι");
-      const posX = permille(p.posX);
-      const posY = permille(p.posY);
-      if (p.shape !== undefined && !SHAPES.includes(p.shape)) throw new Error("Μη έγκυρο σχήμα τραπεζιού");
-      const pos = posX === null || posY === null ? { posX: null, posY: null } : { posX, posY };
-      return p.shape ? { id: tableId, ...pos, shape: p.shape } : { id: tableId, ...pos };
-    });
+    const clean = cleanPositions(positions);
     await saveTablePositions(id, clean);
     revalidate();
     return clean.length;
+  });
+}
+
+/** Αποθηκεύει μαζί τις θέσεις των τραπεζιών και την κάτοψη (δωμάτια) ενός χώρου. */
+export async function saveFloorLayoutAction(areaId: number, positions: TablePosition[], plan: FloorPlan) {
+  return run(async () => {
+    await requireRole("manager", "admin");
+    const id = areaIdOf(areaId);
+    const saved = await saveFloorLayout(id, cleanPositions(positions), plan);
+    revalidate();
+    return saved.rooms.length;
   });
 }
 

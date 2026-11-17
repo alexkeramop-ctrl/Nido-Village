@@ -1,4 +1,5 @@
 "use client";
+import { DateGR } from "@/components/admin/date-gr";
 import Link from "next/link";
 import { Money, Stat } from "@/components/ui";
 import { BarChart } from "@/components/admin/bars";
@@ -75,11 +76,11 @@ export function ReportsView({
         <form method="get" action="/admin/reports" className="flex flex-wrap items-end gap-2 sm:ml-auto">
           <label className="text-xs text-ink-3">
             Από
-            <input type="date" name="from" defaultValue={from} className="input py-1.5 num block" />
+            <DateGR name="from" defaultValue={from} compact />
           </label>
           <label className="text-xs text-ink-3">
             Έως
-            <input type="date" name="to" defaultValue={to} className="input py-1.5 num block" />
+            <DateGR name="to" defaultValue={to} compact />
           </label>
           <button className="btn-secondary btn-sm">Εμφάνιση</button>
         </form>

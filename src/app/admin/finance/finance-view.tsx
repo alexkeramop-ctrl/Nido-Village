@@ -15,6 +15,7 @@ import {
 } from "@/components/admin/finance/meta";
 import { formatEuro, parseEuroToCents } from "@/server/money";
 import type { FinanceKind, FinanceMethod } from "@/db/schema";
+import { DateGR } from "@/components/admin/date-gr";
 import { deleteFinanceEntryAction, saveFinanceEntryAction } from "./actions";
 
 const eur = (c: number) => formatEuro(c);
@@ -366,7 +367,7 @@ function EntryForm({
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="Ημερομηνία">
-          <input name="date" type="date" className="input num" required defaultValue={e?.date ?? defaultDate} />
+          <DateGR name="date" defaultValue={e?.date ?? defaultDate} />
         </Field>
         <Field label="Κατηγορία">
           <select name="category" className="input" defaultValue={e && (cats as readonly string[]).includes(e.category) ? e.category : cats[0]} key={kind}>

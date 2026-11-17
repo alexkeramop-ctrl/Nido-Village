@@ -1,13 +1,15 @@
 "use client";
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
-import { Badge, EmptyState, Field } from "@/components/ui";
-import { PageHeader, Section, useActionRunner } from "@/components/admin/common";
-import { ZoomableFloorMap, isPlaced, type FloorMapImage, type FloorMapTable } from "@/components/floor-map";
+import { Badge, Field } from "@/components/ui";
+import { InfoBox, PageHeader, Section, useActionRunner } from "@/components/admin/common";
+import { ZoomableFloorMap, isPlaced, type FloorMapImage, type FloorMapTable, type RoomRect } from "@/components/floor-map";
 import type { TableShape } from "@/db/schema";
-import { autoLayoutAction, removeAreaMapAction, saveTablePositionsAction, uploadAreaMapAction } from "./actions";
+import { DEFAULT_ROOM_COLOR, MAX_ROOMS, MAX_ROOM_NAME, ROOM_COLORS, newRoomId, nextRoom, presetThreeRooms, samePlan, type PlanRoom } from "@/lib/floor-plan";
+import { autoLayoutAction, removeAreaMapAction, saveFloorLayoutAction, uploadAreaMapAction } from "./actions";
 
 export type EditorTable = { id: number; name: string; seats: number; posX: number | null; posY: number | null; shape: TableShape };
-export type EditorArea = { id: number; name: string; image: FloorMapImage; tables: EditorTable[] };
+export type EditorArea = { id: number; name: string; image: FloorMapImage; rooms: PlanRoom[]; tables: EditorTable[] };
 
 type Edit = { posX: number | null; posY: number | null; shape: TableShape };
 /** Τοπικές αλλαγές ανά χώρο -> ανά τραπέζι (ό,τι δεν έχει αποθηκευτεί ακόμα). */
@@ -20,7 +22,7 @@ const SHAPES: { value: TableShape; label: string }[] = [
 ];
 const MAX_UPLOAD = 3 * 1024 * 1024;
 const NUDGE = 5;
-const HELP = "Σύρε τα τραπέζια στη θέση τους πάνω στη φωτογραφία. Οι θέσεις εμφανίζονται στο PDA.";
+const HELP = "Σχεδίασε την κάτοψη του χώρου: πρόσθεσε δωμάτια, σύρε τα τραπέζια στη θέση τους και πάτα «Αποθήκευση». Η κάτοψη εμφανίζεται στο PDA.";
 
 const clamp = (v: number) => Math.max(0, Math.min(1000, Math.round(v)));
 
@@ -50,12 +52,15 @@ export function FloorEditor({ areas }: { areas: EditorArea[] }) {
   const [areaId, setAreaId] = useState<number | null>(areas[0]?.id ?? null);
   const [edits, setEdits] = useState<Edits>({});
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  /** Μη αποθηκευμένα δωμάτια ανά χώρο (ολόκληρη η λίστα του χώρου). */
+  const [planEdits, setPlanEdits] = useState<Record<number, PlanRoom[]>>({});
+  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const area = areas.find((a) => a.id === areaId) ?? areas[0] ?? null;
   const areaEdits = area ? edits[area.id] : undefined;
   const tables = useMemo(() => (area ? mergeTables(area, areaEdits) : []), [area, areaEdits]);
-  const dirty = useMemo(
+  const tablesDirty = useMemo(
     () =>
       !!area &&
       area.tables.some((o) => {
@@ -64,17 +69,38 @@ export function FloorEditor({ areas }: { areas: EditorArea[] }) {
       }),
     [area, areaEdits],
   );
+  const areaPlanEdit = area ? planEdits[area.id] : undefined;
+  const rooms = useMemo(() => areaPlanEdit ?? area?.rooms ?? [], [areaPlanEdit, area]);
+  const planDirty = !!area && !!areaPlanEdit && !samePlan(areaPlanEdit, area.rooms);
+  const dirty = tablesDirty || planDirty;
+  /** Με φωτογραφία φόντου τα δωμάτια δεν σχεδιάζονται (άλλος λόγος πλευρών)· η απλή κάτοψη είναι η κύρια λειτουργία. */
+  const planMode = !!area && !area.image;
+  const selectedRoom = planMode ? (rooms.find((r) => r.id === selectedRoomId) ?? null) : null;
   const selected = tables.find((t) => t.id === selectedId) ?? null;
   const placedTables = tables.filter(isPlaced);
   const unplaced = tables.filter((t) => !isPlaced(t));
 
-  // Προειδοποίηση αν φύγει από τη σελίδα με μη αποθηκευμένες αλλαγές.
+  /** Χώροι με μη αποθηκευμένες αλλαγές (και όσοι δεν είναι ο επιλεγμένος): για την προειδοποίηση εξόδου και την ένδειξη στις καρτέλες. */
+  const dirtyAreaIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const a of areas) {
+      const e = edits[a.id];
+      const p = planEdits[a.id];
+      const t = !!e && a.tables.some((o) => !!e[o.id] && (e[o.id].posX !== o.posX || e[o.id].posY !== o.posY || e[o.id].shape !== o.shape));
+      if (t || (!!p && !samePlan(p, a.rooms))) ids.add(a.id);
+    }
+    return ids;
+  }, [areas, edits, planEdits]);
+  const anyDirty = dirtyAreaIds.size > 0;
+  const otherDirty = areas.filter((a) => a.id !== area?.id && dirtyAreaIds.has(a.id));
+
+  // Προειδοποίηση αν φύγει από τη σελίδα με μη αποθηκευμένες αλλαγές (σε οποιονδήποτε χώρο).
   useEffect(() => {
-    if (!dirty) return;
+    if (!anyDirty) return;
     const warn = (e: BeforeUnloadEvent) => e.preventDefault();
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
+  }, [anyDirty]);
 
   const edit = (tableId: number, patch: Partial<Edit>) => {
     if (!area) return;
@@ -93,14 +119,79 @@ export function FloorEditor({ areas }: { areas: EditorArea[] }) {
       return next;
     });
 
+  const clearPlanEdits = (aId: number) =>
+    setPlanEdits((prev) => {
+      const next = { ...prev };
+      delete next[aId];
+      return next;
+    });
+
+  /* --------------------------------- Δωμάτια --------------------------------- */
+
+  const setRooms = (fn: (cur: PlanRoom[]) => PlanRoom[]) => {
+    if (!area) return;
+    const aId = area.id;
+    const base = area.rooms;
+    setPlanEdits((prev) => ({ ...prev, [aId]: fn(prev[aId] ?? base) }));
+  };
+  const selectRoom = (id: string | null) => {
+    setSelectedRoomId(id);
+    if (id !== null) setSelectedId(null);
+  };
+  const selectTable = (id: number | null) => {
+    setSelectedId(id);
+    if (id !== null) setSelectedRoomId(null);
+  };
+  const patchRoom = (id: string, patch: Partial<PlanRoom>) => setRooms((cur) => cur.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  const addRoom = (rect?: RoomRect) => {
+    if (rooms.length >= MAX_ROOMS) return toast(`Έως ${MAX_ROOMS} δωμάτια ανά χώρο`, "danger");
+    const room = { ...nextRoom(rooms), ...rect, id: newRoomId() };
+    setRooms((cur) => [...cur, room]);
+    selectRoom(room.id);
+  };
+  const addPreset = () => {
+    const preset = presetThreeRooms();
+    setRooms(() => preset);
+    selectRoom(preset[0].id);
+  };
+  const deleteRoom = (id: string) => {
+    setRooms((cur) => cur.filter((r) => r.id !== id));
+    setSelectedRoomId(null);
+  };
+
   const save = () => {
     if (!area) return;
     const aId = area.id;
     const positions = tables.map((t) => ({ id: t.id, posX: t.posX, posY: t.posY, shape: t.shape }));
-    run(() => saveTablePositionsAction(aId, positions), { success: "Ο χάρτης αποθηκεύτηκε", onSuccess: () => clearEdits(aId) });
+    // Ό,τι στάλθηκε: αν ο χρήστης αλλάξει κάτι όσο διαρκεί η αποθήκευση, οι νεότερες αλλαγές ΔΕΝ πετιούνται (ο χώρος μένει «μη αποθηκευμένος»).
+    const sentEdits = edits[aId];
+    const sentPlan = planEdits[aId];
+    run(() => saveFloorLayoutAction(aId, positions, { rooms }), {
+      success: "Η κάτοψη αποθηκεύτηκε",
+      onSuccess: () => {
+        setEdits((prev) => {
+          if (prev[aId] !== sentEdits) return prev;
+          const next = { ...prev };
+          delete next[aId];
+          return next;
+        });
+        setPlanEdits((prev) => {
+          if (prev[aId] !== sentPlan) return prev;
+          const next = { ...prev };
+          delete next[aId];
+          return next;
+        });
+      },
+    });
+  };
+  const reset = () => {
+    if (!area) return;
+    clearEdits(area.id);
+    clearPlanEdits(area.id);
+    setSelectedRoomId(null);
   };
 
-  const confirmDiscard = () => !dirty || window.confirm("Υπάρχουν μη αποθηκευμένες αλλαγές που θα χαθούν. Συνέχεια;");
+  const confirmDiscard = () => !tablesDirty || window.confirm("Υπάρχουν μη αποθηκευμένες αλλαγές στις θέσεις των τραπεζιών που θα χαθούν. Συνέχεια;");
 
   const autoLayout = (force: boolean) => {
     if (!area) return;
@@ -127,11 +218,11 @@ export function FloorEditor({ areas }: { areas: EditorArea[] }) {
       fd.set("width", String(dims.width));
       fd.set("height", String(dims.height));
     }
-    run(() => uploadAreaMapAction(fd), { success: "Η εικόνα του χάρτη ενημερώθηκε" });
+    run(() => uploadAreaMapAction(fd), { success: "Η φωτογραφία φόντου ενημερώθηκε" });
   };
 
   const removeImage = () => {
-    if (!area || !window.confirm("Να αφαιρεθεί η εικόνα του χάρτη; Οι θέσεις των τραπεζιών διατηρούνται.")) return;
+    if (!area || !window.confirm("Να αφαιρεθεί η φωτογραφία φόντου; Οι θέσεις των τραπεζιών και τα δωμάτια διατηρούνται.")) return;
     const aId = area.id;
     run(() => removeAreaMapAction(aId), { success: "Η εικόνα αφαιρέθηκε" });
   };
@@ -156,22 +247,30 @@ export function FloorEditor({ areas }: { areas: EditorArea[] }) {
     <div className="space-y-4">
       {toastElement}
       <PageHeader
-        title="Χάρτης χώρου"
+        title="Κάτοψη χώρου"
         subtitle={HELP}
         actions={
+          area && (
           <>
-            <button type="button" className="btn-secondary btn-sm" onClick={() => area && clearEdits(area.id)} disabled={!dirty || pending}>
+            <button type="button" className="btn-secondary btn-sm" onClick={reset} disabled={!dirty || pending}>
               Επαναφορά
             </button>
             <button type="button" className="btn-primary btn-sm" onClick={save} disabled={!dirty || pending}>
               {pending ? "Αποθήκευση…" : "Αποθήκευση"}
             </button>
           </>
+          )
         }
       />
 
       {!area ? (
-        <EmptyState title="Δεν υπάρχουν ενεργοί χώροι" hint="Δημιούργησε χώρους και τραπέζια από τη σελίδα «Τραπέζια»." />
+        <div className="card p-8 text-center text-ink-3">
+          <div className="text-lg font-medium text-ink-2">Δεν υπάρχουν ενεργοί χώροι</div>
+          <div className="text-sm mt-1">Δημιούργησε πρώτα έναν χώρο (π.χ. «Κατάστημα») και τα τραπέζια του. Μετά γύρνα εδώ για να σχεδιάσεις την κάτοψη.</div>
+          <Link href="/admin/tables" className="btn-primary btn-sm mt-4 inline-flex">
+            Άνοιγμα σελίδας «Τραπέζια»
+          </Link>
+        </div>
       ) : (
         <>
           {areas.length > 1 && (
@@ -189,12 +288,16 @@ export function FloorEditor({ areas }: { areas: EditorArea[] }) {
                     onClick={() => {
                       setAreaId(a.id);
                       setSelectedId(null);
+                      setSelectedRoomId(null);
                     }}
                     className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold border transition ${
                       active ? "bg-brand text-white border-brand" : "bg-surface-2 text-ink-2 border-line hover:bg-surface-3"
                     }`}
                   >
                     {a.name}
+                    {dirtyAreaIds.has(a.id) && (
+                      <span data-unsaved-dot className={`ml-1.5 inline-block h-2 w-2 rounded-full align-middle ${active ? "bg-white" : "bg-warn"}`} role="img" aria-label="μη αποθηκευμένες αλλαγές" title="Μη αποθηκευμένες αλλαγές" />
+                    )}
                     <span className={`ml-1.5 num ${active ? "text-white/80" : "text-ink-3"}`}>
                       {n}/{merged.length}
                     </span>
@@ -202,6 +305,13 @@ export function FloorEditor({ areas }: { areas: EditorArea[] }) {
                 );
               })}
             </div>
+          )}
+
+          {otherDirty.length > 0 && (
+            <InfoBox tone="warn">
+              Υπάρχουν μη αποθηκευμένες αλλαγές και {otherDirty.length === 1 ? "στον χώρο" : "στους χώρους"} <b>{otherDirty.map((a) => `«${a.name}»`).join(", ")}</b>. Η «Αποθήκευση» αποθηκεύει μόνο τον χώρο που
+              βλέπεις: άνοιξε {otherDirty.length === 1 ? "τον" : "τον καθένα"} και πάτησε «Αποθήκευση».
+            </InfoBox>
           )}
 
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px] items-start">
@@ -218,42 +328,132 @@ export function FloorEditor({ areas }: { areas: EditorArea[] }) {
               }
               actions={
                 <>
-                  <button type="button" className="btn-secondary btn-sm" onClick={() => autoLayout(false)} disabled={pending}>
-                    Αυτόματη διάταξη
-                  </button>
-                  <button type="button" className="btn-ghost btn-sm" onClick={() => autoLayout(true)} disabled={pending}>
-                    Όλα σε πλέγμα
-                  </button>
-                  <button type="button" className="btn-secondary btn-sm" onClick={() => fileRef.current?.click()} disabled={pending}>
-                    Εικόνα χάρτη
-                  </button>
-                  {area.image && (
-                    <button type="button" className="btn-ghost btn-sm text-danger" onClick={removeImage} disabled={pending}>
-                      Αφαίρεση εικόνας
+                  {planMode && (
+                    <button type="button" className="btn-primary btn-sm" onClick={() => addRoom()} disabled={pending || rooms.length >= MAX_ROOMS}>
+                      + Δωμάτιο
                     </button>
+                  )}
+                  {planMode && rooms.length === 0 && (
+                    <button type="button" className="btn-secondary btn-sm" onClick={addPreset} disabled={pending}>
+                      3 δωμάτια
+                    </button>
+                  )}
+                  {tables.length > 0 && (
+                    <>
+                      <button type="button" className="btn-secondary btn-sm" onClick={() => autoLayout(false)} disabled={pending}>
+                        Αυτόματη διάταξη
+                      </button>
+                      <button type="button" className="btn-ghost btn-sm" onClick={() => autoLayout(true)} disabled={pending}>
+                        Όλα σε πλέγμα
+                      </button>
+                    </>
                   )}
                 </>
               }
             >
-              <div className="p-3 sm:p-4">
+              <div className="p-3 sm:p-4 space-y-3">
+                {tables.length === 0 && (
+                  <InfoBox>
+                    Ο χώρος «{area.name}» δεν έχει ακόμα τραπέζια. Πρόσθεσέ τα στη σελίδα{" "}
+                    <Link href="/admin/tables" className="font-semibold underline">
+                      Τραπέζια
+                    </Link>{" "}
+                    και μετά γύρνα εδώ για να τα τοποθετήσεις στην κάτοψη. Στο μεταξύ μπορείς να σχεδιάσεις τα δωμάτια.
+                  </InfoBox>
+                )}
+                {planMode && rooms.length === 0 && (
+                  <InfoBox>
+                    Η κάτοψη είναι κενή. Πάτησε <b>«3 δωμάτια»</b> για έτοιμη αρχή (Σάλα, Βεράντα, Κήπος) ή <b>«+ Δωμάτιο»</b> για να προσθέσεις ένα ένα. Μετά σύρε τα, άλλαξέ τους μέγεθος από τη γωνία
+                    κάτω δεξιά και δώσε τους όνομα.
+                  </InfoBox>
+                )}
                 <ZoomableFloorMap
                   key={area.id}
                   areaImage={area.image}
                   tables={markers}
                   editable
                   onMove={(id, x, y) => edit(id, { posX: x, posY: y })}
-                  onTap={setSelectedId}
+                  onTap={selectTable}
                   selectedId={selectedId}
+                  rooms={rooms}
+                  roomsEditable={planMode}
+                  selectedRoomId={selectedRoomId}
+                  onRoomSelect={selectRoom}
+                  onRoomChange={(id, rect) => patchRoom(id, rect)}
+                  onRoomDraw={(rect) => addRoom(rect)}
                   footer={
-                    area.image
-                      ? `${placedTables.length} από ${tables.length} τραπέζια στον χάρτη · εικόνα έως 3MB (JPEG, PNG, WebP, SVG).`
-                      : "Δεν υπάρχει εικόνα χάρτη. Ανέβασε μια φωτογραφία ή κάτοψη με το κουμπί «Εικόνα χάρτη» (έως 3MB)."
+                    planMode
+                      ? `${rooms.length} δωμάτια · ${placedTables.length} από ${tables.length} τραπέζια στην κάτοψη. Με ποντίκι μπορείς και να σχεδιάσεις δωμάτιο σύροντας σε κενό σημείο.`
+                      : `${placedTables.length} από ${tables.length} τραπέζια στον χάρτη. Με φωτογραφία φόντου τα δωμάτια δεν εμφανίζονται.`
                   }
                 />
               </div>
             </Section>
 
             <aside className="space-y-4">
+              {planMode && (
+                <Section title={`Δωμάτια (${rooms.length})`}>
+                  {selectedRoom ? (
+                    <div className="space-y-3">
+                      <Field label="Όνομα δωματίου">
+                        <input
+                          className="input"
+                          aria-label="Όνομα δωματίου"
+                          value={selectedRoom.name}
+                          maxLength={MAX_ROOM_NAME}
+                          onChange={(e) => patchRoom(selectedRoom.id, { name: e.target.value })}
+                        />
+                      </Field>
+                      <div>
+                        <span className="label">Χρώμα</span>
+                        <div className="flex flex-wrap gap-2" role="group" aria-label="Χρώμα δωματίου">
+                          {ROOM_COLORS.map((c) => {
+                            const on = (selectedRoom.color ?? DEFAULT_ROOM_COLOR) === c.key;
+                            return (
+                              <button
+                                key={c.key}
+                                type="button"
+                                aria-label={`Χρώμα: ${c.label}`}
+                                aria-pressed={on}
+                                title={c.label}
+                                onClick={() => patchRoom(selectedRoom.id, { color: c.key })}
+                                className={`h-9 w-9 rounded-full border-2 transition ${on ? "ring-2 ring-brand ring-offset-2 ring-offset-white" : ""}`}
+                                style={{ backgroundColor: c.fill, borderColor: c.stroke }}
+                              />
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <div className="text-xs text-ink-3 num">
+                        Μέγεθος {(selectedRoom.w / 10).toFixed(0)}% × {(selectedRoom.h / 10).toFixed(0)}% · σύρε το δωμάτιο για μετακίνηση και τη γωνία κάτω δεξιά για μέγεθος.
+                      </div>
+                      <button type="button" className="btn-secondary btn-sm w-full text-danger" onClick={() => deleteRoom(selectedRoom.id)} aria-label={`Διαγραφή δωματίου ${selectedRoom.name}`}>
+                        Διαγραφή δωματίου
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-ink-3">
+                      {rooms.length ? "Πάτησε ένα δωμάτιο για να αλλάξεις όνομα, χρώμα ή να το διαγράψεις." : "Δεν υπάρχουν δωμάτια ακόμα."}
+                    </p>
+                  )}
+                  {rooms.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-line" role="group" aria-label="Λίστα δωματίων">
+                      {rooms.map((r) => (
+                        <button
+                          key={r.id}
+                          type="button"
+                          aria-pressed={r.id === selectedRoomId}
+                          onClick={() => selectRoom(r.id)}
+                          className={`btn-secondary btn-sm max-w-full ${r.id === selectedRoomId ? "ring-2 ring-brand" : ""}`}
+                        >
+                          <span className="truncate">{r.name || "Χωρίς όνομα"}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </Section>
+              )}
+
               <Section title="Επιλεγμένο τραπέζι">
                 {selected ? (
                   <div className="space-y-3">
@@ -319,7 +519,7 @@ export function FloorEditor({ areas }: { areas: EditorArea[] }) {
                           className={`btn-secondary btn-sm ${selectedId === t.id ? "ring-2 ring-brand" : ""}`}
                           onClick={() => {
                             edit(t.id, { posX: 500, posY: 500 });
-                            setSelectedId(t.id);
+                            selectTable(t.id);
                           }}
                         >
                           {t.name}
@@ -330,15 +530,33 @@ export function FloorEditor({ areas }: { areas: EditorArea[] }) {
                     <p className="text-xs text-ink-3 mt-2">Πάτησε ένα τραπέζι για να μπει στο κέντρο του χάρτη και μετά σύρε το στη θέση του.</p>
                   </>
                 ) : (
-                  <p className="text-sm text-ink-3">Όλα τα τραπέζια έχουν θέση στον χάρτη.</p>
+                  <p className="text-sm text-ink-3">{tables.length ? "Όλα τα τραπέζια έχουν θέση στον χάρτη." : "Δεν υπάρχουν τραπέζια σε αυτόν τον χώρο."}</p>
                 )}
+              </Section>
+
+              <Section title="Προαιρετικά: φωτογραφία φόντου">
+                <p className="text-sm text-ink-3 mb-3">
+                  {area.image
+                    ? "Ο χάρτης δείχνει τη φωτογραφία. Αφαίρεσέ τη για να γυρίσεις στην απλή κάτοψη με τα δωμάτια."
+                    : "Δεν χρειάζεται. Αν θέλεις, ανέβασε μια φωτογραφία ή έτοιμο σχέδιο (έως 3MB) για να μπει πίσω από τα τραπέζια αντί για την κάτοψη."}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" className="btn-secondary btn-sm" onClick={() => fileRef.current?.click()} disabled={pending}>
+                    {area.image ? "Αλλαγή φωτογραφίας" : "Ανέβασμα φωτογραφίας"}
+                  </button>
+                  {area.image && (
+                    <button type="button" className="btn-ghost btn-sm text-danger" onClick={removeImage} disabled={pending}>
+                      Αφαίρεση φωτογραφίας
+                    </button>
+                  )}
+                </div>
               </Section>
             </aside>
           </div>
         </>
       )}
 
-      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onFile} aria-label="Εικόνα χάρτη" />
+      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onFile} aria-label="Φωτογραφία φόντου" />
     </div>
   );
 }

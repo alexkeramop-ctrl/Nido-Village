@@ -6,7 +6,7 @@ import { PageHeader, Section, useActionRunner } from "@/components/admin/common"
 import { fmtIsoDate } from "@/components/admin/format";
 import { LiveRefresh } from "@/components/live";
 import { WEEKDAYS_SHORT, longDateLabel, monthLabel, shiftMonth, weekdayMon, type MonthGrid } from "@/components/admin/events/dates";
-import { CANCELLED_CHIP, EVENT_STATUS_TONE, EVENT_TYPE_CHIP, EVENT_TYPE_DOT, SCOPES, type CalendarScope } from "@/components/admin/events/meta";
+import { CANCELLED_CHIP, EVENT_STATUS_TONE, EVENT_TYPE_CHIP, EVENT_TYPE_DOT, SCOPES, timeRange, type CalendarScope } from "@/components/admin/events/meta";
 import { packageByKey } from "@/components/admin/events/party";
 import type { AreaOption, EventRow } from "@/components/admin/events/types";
 import type { EventStatus, EventType } from "@/db/schema";
@@ -179,7 +179,7 @@ export function EventsCalendar({
                             type="button"
                             data-event-id={ev.id}
                             data-status={ev.status}
-                            title={`${ev.startTime}–${ev.endTime} ${ev.title} · ${typeLabels[ev.type]} · ${statusLabels[ev.status]}${ev.areaName ? ` · ${ev.areaName}` : ""}`}
+                            title={`${timeRange(ev)} ${ev.title} · ${typeLabels[ev.type]} · ${statusLabels[ev.status]}${ev.areaName ? ` · ${ev.areaName}` : ""}`}
                             onClick={(e) => {
                               e.stopPropagation();
                               openEdit(ev);
@@ -224,7 +224,7 @@ export function EventsCalendar({
                     {WEEKDAYS_SHORT[weekdayMon(ev.date)]} {fmtIsoDate(ev.date)}
                   </div>
                   <div className="text-xs text-ink-3 num">
-                    {ev.startTime}–{ev.endTime}
+                    {timeRange(ev)}
                   </div>
                 </div>
                 <div className="min-w-0 flex-1">

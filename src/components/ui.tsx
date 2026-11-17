@@ -1,6 +1,6 @@
 "use client";
 import { formatEuro } from "@/server/money";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 export function Money({ cents, className = "" }: { cents: number; className?: string }) {
   return <span className={`num ${className}`}>{formatEuro(cents)}</span>;
@@ -30,6 +30,7 @@ export function Modal({
   children: ReactNode;
   wide?: boolean;
 }) {
+  const downOnBackdrop = useRef(false);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -38,7 +39,17 @@ export function Modal({
   }, [open, onClose]);
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/55 backdrop-blur-sm p-0 sm:p-4" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/55 backdrop-blur-sm p-0 sm:p-4"
+      // Κλείνει μόνο αν το πάτημα ΞΕΚΙΝΗΣΕ και ΤΕΛΕΙΩΣΕ στο σκούρο φόντο (όχι όταν σέρνεις το ποντίκι από μέσα προς τα έξω).
+      onPointerDown={(e) => {
+        downOnBackdrop.current = e.target === e.currentTarget;
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget && downOnBackdrop.current) onClose();
+        downOnBackdrop.current = false;
+      }}
+    >
       <div
         className={`glass-modal text-ink w-full ${wide ? "sm:max-w-3xl" : "sm:max-w-md"} rounded-t-2xl sm:rounded-2xl max-h-[92vh] flex flex-col`}
         onClick={(e) => e.stopPropagation()}

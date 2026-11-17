@@ -79,3 +79,17 @@ export async function deleteProductAction(id: number) {
     return result;
   });
 }
+
+/** Φορτώνει το βασικό μενού μπαρ με ενδεικτικές τιμές (χωρίς διπλοεγγραφές). */
+export async function loadStarterMenuAction() {
+  return run(async () => {
+    const me = await requireRole("manager", "admin");
+    const { loadStarterMenu } = await import("@/db/starter-menu");
+    const { getDb } = await import("@/db");
+    const { audit } = await import("@/server/audit");
+    const r = await loadStarterMenu();
+    await audit(await getDb(), me.id, "starter_menu", "catalog", null, r);
+    revalidatePath("/admin/menu");
+    return r;
+  });
+}

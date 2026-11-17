@@ -7,6 +7,7 @@ import { parseEuroToCents } from "@/server/money";
 import type { EventStatus, EventType, PartyDetails } from "@/db/schema";
 import { EVENT_STATUSES } from "@/components/admin/events/meta";
 import { longDateLabel } from "@/components/admin/events/dates";
+import { DateGR } from "@/components/admin/date-gr";
 import { ADULT_MENUS, PARTY_EXTRAS, PARTY_MINUTES, PARTY_PACKAGES, addMinutes, isMonToThu, quoteParty } from "@/components/admin/events/party";
 import { Money } from "@/components/ui";
 import type { AreaOption, ConflictRow, EventFormInput, EventRow } from "@/components/admin/events/types";
@@ -60,6 +61,8 @@ export function EventForm({
     initial?.endTime ?? (defaultType === "party" ? addMinutes("11:00", PARTY_MINUTES) : defaultType === "appointment" ? "19:00" : "16:00"),
   );
   const isParty = type === "party";
+  /** Γάμοι και βαπτίσεις δεν έχουν ώρα λήξης: κρατούν τον χώρο μέχρι το τέλος της ημέρας. */
+  const noEnd = type === "wedding" || type === "christening";
   const quote = isParty ? quoteParty(party, date) : null;
   const setP = (patch: Partial<PartyDetails>) => setParty((p) => ({ ...p, ...patch }));
   const typeChoices = initial && !allowedTypes.includes(initial.type) ? [...allowedTypes, initial.type] : allowedTypes;
@@ -176,22 +179,17 @@ export function EventForm({
           </select>
         </Field>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <div className="col-span-2 sm:col-span-1">
-          <Field label="Ημερομηνία" hint={date ? longDateLabel(date) : undefined}>
-            <input
-              name="date"
-              type="date"
-              className="input num"
-              required
-              value={date}
-              onChange={(e) => {
-                setDate(e.target.value);
-                clearConflicts();
-              }}
-            />
-          </Field>
-        </div>
+      <Field label="Ημερομηνία" hint={date ? longDateLabel(date) : undefined}>
+        <DateGR
+          name="date"
+          value={date}
+          onChange={(v) => {
+            setDate(v);
+            clearConflicts();
+          }}
+        />
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
         <Field label="Έναρξη">
           <Time24
             name="startTime"
@@ -204,16 +202,20 @@ export function EventForm({
             }}
           />
         </Field>
-        <Field label="Λήξη">
-          <Time24
-            name="endTime"
-            value={endTime}
-            onChange={(v) => {
-              setEndTime(v);
-              clearConflicts();
-            }}
-          />
-        </Field>
+        {noEnd ? (
+          <input type="hidden" name="endTime" value="23:59" />
+        ) : (
+          <Field label="Λήξη">
+            <Time24
+              name="endTime"
+              value={endTime}
+              onChange={(v) => {
+                setEndTime(v);
+                clearConflicts();
+              }}
+            />
+          </Field>
+        )}
       </div>
       {isParty && (
         <fieldset className="rounded-xl border border-amber-300/30 bg-amber-300/[0.07] p-3 space-y-3">

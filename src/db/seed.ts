@@ -1,27 +1,12 @@
 /**
  * Δείγμα δεδομένων για το Nido Village. Τρέχει μόνο αν η βάση είναι άδεια.
  */
-import fs from "node:fs";
-import path from "node:path";
 import { randomInt } from "node:crypto";
 import { sql } from "drizzle-orm";
 import type { Db } from "./index";
 import * as schema from "./schema";
+import type { PlanRoom } from "@/lib/floor-plan";
 import { encryptPin, hashPin } from "@/server/pin";
-
-/** Η αεροφωτογραφία του demo: από τον δίσκο, ή στα Cloudflare Workers από τα στατικά αρχεία (/seed/). */
-async function readSeedImage(): Promise<Buffer> {
-  const { isWorker } = await import("@/server/cf");
-  if (isWorker) {
-    const { cfContext } = await import("@/server/cf");
-    const { env } = await cfContext();
-    if (!env.ASSETS) throw new Error("no ASSETS binding");
-    const res = await env.ASSETS.fetch(new Request("https://assets.local/seed/nido-aerial.jpg"));
-    if (!res.ok) throw new Error(`seed image ${res.status}`);
-    return Buffer.from(await res.arrayBuffer());
-  }
-  return fs.readFileSync(path.join(process.cwd(), "src", "db", "seed-assets", "nido-aerial.jpg"));
-}
 
 /** PIN του demo. Χωρίς NIDO_ADMIN_PIN: τα γνωστά 1234/4444/… . Με NIDO_ADMIN_PIN: αυτό για τον διαχειριστή, τυχαία για τους άλλους. */
 export function demoPins(adminPin: string | undefined) {
@@ -79,48 +64,44 @@ export async function seedDemo(db: Db): Promise<boolean> {
     ])
     .returning();
 
-  // Χάρτης χώρου: η αεροφωτογραφία του Nido Village ως φόντο (918x1713).
-  let mapAssetId: number | null = null;
-  try {
-    const img = await readSeedImage();
-    const [asset] = await db
-      .insert(schema.assets)
-      .values({ kind: "map", mime: "image/jpeg", data: img.toString("base64"), width: 918, height: 1713 })
-      .returning();
-    mapAssetId = asset.id;
-  } catch {
-    mapAssetId = null;
-  }
-
   // Χώροι: «Κέντρο» (κτίριο, πισίνα, πέργκολες) και «Παιδική» (τραπέζια στον παιδότοπο). Κάθε χώρος έχει το μπαρ του.
+  // Ο χάρτης είναι απλή κάτοψη (χωρίς φωτογραφία): 3 δωμάτια ανά χώρο και τα τραπέζια μέσα τους.
+  const kentroRooms: PlanRoom[] = [
+    { id: "k-sala", name: "Σάλα", x: 30, y: 40, w: 600, h: 520, color: "sand" },
+    { id: "k-pergola", name: "Πέργκολα", x: 670, y: 40, w: 300, h: 520, color: "sky" },
+    { id: "k-veranta", name: "Βεράντα", x: 30, y: 600, w: 940, h: 360, color: "sage" },
+  ];
+  const paidikiRooms: PlanRoom[] = [
+    { id: "p-paidotopos", name: "Παιδότοπος", x: 30, y: 40, w: 600, h: 540, color: "rose" },
+    { id: "p-pergola", name: "Πέργκολα", x: 670, y: 40, w: 300, h: 540, color: "lavender" },
+    { id: "p-kipos", name: "Κήπος", x: 30, y: 620, w: 940, h: 340, color: "sage" },
+  ];
   const [kentro, paidiki] = await db
     .insert(schema.areas)
     .values([
-      { name: "Κέντρο", sort: 1, mapAssetId, barStationId: barKentro.id },
-      { name: "Παιδική", sort: 2, mapAssetId, barStationId: barPaidiki.id },
+      { name: "Κέντρο", sort: 1, mapAssetId: null, barStationId: barKentro.id, plan: { rooms: kentroRooms } },
+      { name: "Παιδική", sort: 2, mapAssetId: null, barStationId: barPaidiki.id, plan: { rooms: paidikiRooms } },
     ])
     .returning();
-  const pos = (x: number, y: number) => ({ posX: Math.round((x / 918) * 1000), posY: Math.round((y / 1713) * 1000) });
-  const kentroPos: [number, number][] = [
-    [372, 250], [372, 300], [372, 350], [400, 235], [455, 235], [510, 235],
-    [560, 250], [560, 300], [560, 350], [420, 365], [470, 370], [520, 365],
-    [590, 285], [590, 335], [345, 300], [345, 355],
-    [275, 405], [275, 450], [275, 495], [275, 540],
-    [440, 545], [490, 550], [540, 550], [590, 545], [630, 500],
-    [320, 605], [370, 615], [420, 625], [470, 630], [520, 630],
-  ];
-  const paidikiPos: [number, number][] = [
-    [530, 690], [565, 690], [600, 690], [635, 690],
-    [530, 725], [565, 725], [600, 725], [635, 725],
-    [530, 760], [565, 760], [600, 760], [635, 760],
-    [300, 1020], [300, 1070], [300, 1120],
-    [420, 1165], [475, 1170], [530, 1175], [585, 1180], [640, 1185],
-  ];
+  /** Θέσεις σε πλέγμα μέσα σε ένα δωμάτιο (αφήνει χώρο πάνω για την ετικέτα του). */
+  const gridIn = (room: PlanRoom, count: number, cols: number) => {
+    const rows = Math.ceil(count / cols);
+    const top = room.y + 70;
+    const h = room.h - 90;
+    return Array.from({ length: count }, (_, i) => ({
+      posX: Math.round(room.x + ((i % cols) + 0.5) * (room.w / cols)),
+      posY: Math.round(top + (Math.floor(i / cols) + 0.5) * (h / rows)),
+    }));
+  };
+  // Κέντρο: Κ1–Κ16 στη Σάλα, Κ17–Κ20 (μακρόστενα) στην Πέργκολα, Κ21–Κ30 στη Βεράντα.
+  const kentroPos = [...gridIn(kentroRooms[0], 16, 4), ...gridIn(kentroRooms[1], 4, 1), ...gridIn(kentroRooms[2], 10, 5)];
+  // Παιδική: Π1–Π12 στον Παιδότοπο, Π13–Π15 (μακρόστενα) στην Πέργκολα, Π16–Π20 στον Κήπο.
+  const paidikiPos = [...gridIn(paidikiRooms[0], 12, 4), ...gridIn(paidikiRooms[1], 3, 1), ...gridIn(paidikiRooms[2], 5, 5)];
   const tableRows: (typeof schema.tables.$inferInsert)[] = [];
   for (let i = 1; i <= 30; i++)
-    tableRows.push({ areaId: kentro.id, name: `Κ${i}`, seats: i % 5 === 0 ? 6 : 4, sort: i, shape: i > 16 && i <= 20 ? "wide" : "round", ...pos(...kentroPos[i - 1]) });
+    tableRows.push({ areaId: kentro.id, name: `Κ${i}`, seats: i % 5 === 0 ? 6 : 4, sort: i, shape: i > 16 && i <= 20 ? "wide" : "round", ...kentroPos[i - 1] });
   for (let i = 1; i <= 20; i++)
-    tableRows.push({ areaId: paidiki.id, name: `Π${i}`, seats: 6, sort: i, shape: i > 12 && i <= 15 ? "wide" : "round", ...pos(...paidikiPos[i - 1]) });
+    tableRows.push({ areaId: paidiki.id, name: `Π${i}`, seats: 6, sort: i, shape: i > 12 && i <= 15 ? "wide" : "round", ...paidikiPos[i - 1] });
   await db.insert(schema.tables).values(tableRows);
 
   // Κατηγορίες: ροφήματα στο μπαρ (του χώρου), φαγητά στην κουζίνα.
@@ -395,7 +376,8 @@ export async function seedDemo(db: Db): Promise<boolean> {
 /**
  * Καθαρό ξεκίνημα (online): μόνο τα απαραίτητα για να δουλέψει το σύστημα.
  * Ένας διαχειριστής με το NIDO_ADMIN_PIN, συντελεστές ΦΠΑ, σταθμοί εκτύπωσης και στοιχεία καταστήματος.
- * Μενού, αποθήκη, χώροι, τραπέζια και προσωπικό τα περνά ο ίδιος ο διαχειριστής.
+ * Ένας προεπιλεγμένος χώρος «Κατάστημα» (χωρίς τραπέζια/δωμάτια), ώστε η Κάτοψη και τα Τραπέζια να δουλεύουν αμέσως.
+ * Μενού, αποθήκη, τραπέζια, δωμάτια και προσωπικό τα περνά ο ίδιος ο διαχειριστής.
  */
 export async function seedClean(db: Db): Promise<boolean> {
   const existing = await db.select({ n: sql<number>`count(*)::int` }).from(schema.employees);
@@ -417,6 +399,8 @@ export async function seedClean(db: Db): Promise<boolean> {
       { name: "Ταμείο", kind: "receipt", driver: "console", sort: 3, drawerKick: true },
     ])
     .returning();
+  // Ένας χώρος για να ξεκινήσει ο υπεύθυνος: τραπέζια από τη σελίδα «Τραπέζια», δωμάτια από την «Κάτοψη».
+  await db.insert(schema.areas).values({ name: "Κατάστημα", sort: 1, barStationId: bar.id });
   // Κατηγορίες μενού (χωρίς είδη): ροφήματα στο μπαρ, φαγητά στην κουζίνα.
   await db.insert(schema.categories).values([
     { name: "Καφέδες", sort: 1, color: "#6b4f2a", printStationId: bar.id },

@@ -39,7 +39,14 @@ describe("καθαρό ξεκίνημα online", () => {
       expect((await db.select().from(schema.categories)).map((c) => c.name)).toContain("Hot dog");
       expect(await db.select().from(schema.ingredients)).toHaveLength(0);
       expect(await db.select().from(schema.tables)).toHaveLength(0);
-      expect(await db.select().from(schema.areas)).toHaveLength(0);
+      // Ένας προεπιλεγμένος χώρος (με το μπαρ του), χωρίς τραπέζια και χωρίς δωμάτια: ο υπεύθυνος ξεκινά αμέσως.
+      const areas = await db.select().from(schema.areas);
+      expect(areas).toHaveLength(1);
+      expect(areas[0].name).toBe("Κατάστημα");
+      expect(areas[0].plan).toBeNull();
+      expect(areas[0].mapAssetId).toBeNull();
+      const bar = (await db.select().from(schema.printStations)).find((s) => s.name === "Μπαρ")!;
+      expect(areas[0].barStationId).toBe(bar.id);
     } finally {
       if (prev === undefined) delete process.env.NIDO_ADMIN_PIN;
       else process.env.NIDO_ADMIN_PIN = prev;
