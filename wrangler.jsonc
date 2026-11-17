@@ -1,7 +1,7 @@
 // Cloudflare Workers: POS στο pda.nidovillage.gr. Build: npm run build:cf · Deploy: npm run deploy:cf
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "nido-pda",
+  "name": "nido-pda-app",
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
@@ -9,7 +9,7 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
-  "services": [{ "binding": "WORKER_SELF_REFERENCE", "service": "nido-pda" }],
+  "services": [{ "binding": "WORKER_SELF_REFERENCE", "service": "nido-pda-app" }],
   "vars": {
     "NIDO_MODE": "store"
   },
