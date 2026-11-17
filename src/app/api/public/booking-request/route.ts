@@ -35,6 +35,35 @@ function clientIp(req: Request): string {
   return h.get("cf-connecting-ip") ?? h.get("x-real-ip") ?? h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
 }
 
+/**
+ * Διαβάζει το σώμα του αιτήματος μέχρι `max` bytes. null αν είναι μεγαλύτερο (σταματά να διαβάζει μόλις το ξεπεράσει,
+ * ώστε ένα δημόσιο σημείο να μη φορτώνει στη μνήμη ό,τι του στείλουν).
+ */
+async function readBodyCapped(req: Request, max: number): Promise<string | null> {
+  if (Number(req.headers.get("content-length") ?? "0") > max) return null;
+  if (!req.body) return "";
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > max) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const all = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    all.set(c, offset);
+    offset += c.byteLength;
+  }
+  return new TextDecoder().decode(all);
+}
+
 /** Preflight του browser πριν από το POST με JSON. */
 export async function OPTIONS(req: Request) {
   return new Response(null, { status: 204, headers: corsHeaders(req.headers.get("origin")) });
@@ -51,8 +80,8 @@ export async function POST(req: Request) {
   if (origin && !allowedOrigins().includes(origin)) return json({ ok: false, error: "origin" }, 403, origin);
   let payload: unknown;
   try {
-    const text = await req.text();
-    if (new TextEncoder().encode(text).length > MAX_BODY_BYTES) return json({ ok: false, error: "too_large" }, 413, origin);
+    const text = await readBodyCapped(req, MAX_BODY_BYTES);
+    if (text === null) return json({ ok: false, error: "too_large" }, 413, origin);
     payload = JSON.parse(text);
   } catch {
     return json({ ok: false, error: "invalid", fields: { body: "Μη έγκυρο JSON" } }, 400, origin);
