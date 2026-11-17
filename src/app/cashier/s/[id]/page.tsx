@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { requirePageUser } from "@/server/page-auth";
+import { hasRole } from "@/server/auth";
 import { getSessionDetail } from "@/server/services/billing";
 import { Shell } from "@/components/shell";
 import { LiveRefresh } from "@/components/live";
@@ -19,7 +20,7 @@ export default async function CashierSessionPage({ params }: { params: Promise<{
   return (
     <Shell user={user} active="/cashier" title={detail.orderType === "dine_in" ? detail.displayName : `${ORDER_TYPE_TITLE[detail.orderType]}: ${detail.displayName}`}>
       <LiveRefresh types={["session.changed"]} />
-      <PaymentScreen session={toSessionDto(detail)} />
+      <PaymentScreen session={toSessionDto(detail)} canDiscount={hasRole(user, "manager")} />
     </Shell>
   );
 }

@@ -1,63 +1,49 @@
 import { requirePageUser } from "@/server/page-auth";
-import { cashSessionSummary, getCurrentCashSession, listRecentClosedSessions, listSessionsForCashier } from "@/server/services/billing";
+import { hasRole } from "@/server/auth";
+import { getMenu } from "@/server/services/catalog";
+import { deviceRegister } from "@/server/services/device-register";
+import { tillSnapshot, topProducts } from "@/server/services/till";
 import { Shell } from "@/components/shell";
-import { LiveRefresh } from "@/components/live";
-import { minutesSince } from "@/components/ops/labels";
-import { CashierScreen } from "./cashier-screen";
+import { OpenShiftPanel, RegisterPicker } from "./shift-panels";
+import { TillScreen } from "./till-screen";
 
 export const dynamic = "force-dynamic";
 
-/** Ταμείο: ανοιχτοί λογαριασμοί και βάρδια ταμείου. */
+/**
+ * Ταμείο self-service. Τρεις καταστάσεις: (1) η συσκευή δεν έχει διαλέξει ταμείο, (2) το ταμείο δεν έχει ανοιχτή βάρδια,
+ * (3) γρήγορη πώληση. Ο κατάλογος φορτώνεται εδώ ΜΙΑ φορά και μένει στον browser.
+ */
 export default async function CashierPage() {
   const user = await requirePageUser("cashier", "manager", "admin");
-  const [sessions, cash, recent] = await Promise.all([listSessionsForCashier(), getCurrentCashSession(), listRecentClosedSessions(10)]);
-  const summary = cash ? await cashSessionSummary(cash.id) : null;
+  const { registers, register } = await deviceRegister();
+  if (!register) {
+    return (
+      <Shell user={user} active="/cashier" title="Ταμείο">
+        <RegisterPicker
+          isAdmin={user.role === "admin"}
+          registers={registers.map((r) => ({ id: r.id, name: r.name, openShift: r.openShift ? { openedAt: r.openShift.openedAt.toISOString(), openedBy: r.openShift.openedBy } : null }))}
+        />
+      </Shell>
+    );
+  }
+  if (!register.openShift) {
+    return (
+      <Shell user={user} active="/cashier" title="Ταμείο">
+        <OpenShiftPanel key={register.id} register={{ id: register.id, name: register.name }} canSwitch={registers.length > 1} />
+      </Shell>
+    );
+  }
+  const [menu, frequentIds, snapshot] = await Promise.all([getMenu(), topProducts(), tillSnapshot(register.id)]);
   return (
     <Shell user={user} active="/cashier" title="Ταμείο">
-      <LiveRefresh types={["session.changed", "floor.changed"]} pollMs={60000} />
-      <CashierScreen
-        sessions={sessions.map((s) => ({
-          id: s.id,
-          displayName: s.displayName,
-          orderType: s.orderType,
-          status: s.status,
-          waiter: s.waiter,
-          openedAt: s.openedAt.toISOString(),
-          minutesOpen: minutesSince(s.openedAt),
-          itemCount: s.itemCount,
-          source: s.source,
-          pickupCode: s.pickupCode,
-          customerName: s.customerName,
-          readyAt: s.readyAt?.toISOString() ?? null,
-          pickedUpAt: s.pickedUpAt?.toISOString() ?? null,
-          totals: {
-            subtotalCents: s.totals.subtotalCents,
-            discountCents: s.totals.discountCents,
-            totalCents: s.totals.totalCents,
-            paidCents: s.totals.paidCents,
-            dueCents: s.totals.dueCents,
-          },
-        }))}
-        shift={
-          cash && summary
-            ? {
-                id: cash.id,
-                openedAt: cash.openedAt.toISOString(),
-                openingFloatCents: cash.openingFloatCents,
-                byMethod: summary.byMethod,
-                expectedCashCents: summary.expectedCashCents,
-                totalCents: summary.totalCents,
-              }
-            : null
-        }
-        recent={recent.map((r) => ({
-          id: r.id,
-          displayName: r.displayName,
-          closedAt: r.closedAt ? r.closedAt.toISOString() : null,
-          waiter: r.waiter,
-          totalCents: r.totals.totalCents,
-          methods: r.methods,
-        }))}
+      <TillScreen
+        key={`${register.id}-${register.openShift.id}`}
+        register={{ id: register.id, name: register.name }}
+        userName={user.name}
+        canDiscount={hasRole(user, "manager")}
+        menu={menu}
+        frequentIds={frequentIds}
+        initial={snapshot}
       />
     </Shell>
   );

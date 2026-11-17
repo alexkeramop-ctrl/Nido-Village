@@ -32,5 +32,12 @@ export default async function OrderStatusPage({ params }: { params: Promise<{ to
       </main>
     );
   }
-  return <StatusClient order={order} token={token} venueName={settings.venueName} />;
+  return (
+    <StatusClient
+      order={order}
+      token={token}
+      venueName={settings.venueName}
+      contact={{ venueName: settings.venueName, address: settings.address, phone: settings.phone, email: settings.email }}
+    />
+  );
 }

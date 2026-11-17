@@ -6,6 +6,7 @@ import { Field, Modal, Money, useToast } from "@/components/ui";
 import { formatEuro } from "@/server/money";
 import type { Menu } from "@/server/services/catalog";
 import type { CartLine } from "@/server/services/ordering";
+import { ContactFooter, type VenueContact } from "@/components/qr/contact";
 import { placeQrOrderAction } from "./actions";
 import { CART_KEY, CUSTOMER_KEY, parseJson, setStoredJson, useStoredValue } from "./cart-store";
 
@@ -66,7 +67,7 @@ function restoreCart(raw: unknown, menu: Menu): UiLine[] {
 
 type StoredCustomer = { name?: string; phone?: string };
 
-export function OrderClient({ menu, venueName }: { menu: Menu; venueName: string }) {
+export function OrderClient({ menu, venueName, contact }: { menu: Menu; venueName: string; contact: VenueContact }) {
   const { toast, element } = useToast();
   const [pending, start] = useTransition();
   // Το καλάθι ζει στο localStorage (null στον server -> άδειο καλάθι, ίδιο HTML σε server και client).
@@ -182,7 +183,7 @@ export function OrderClient({ menu, venueName }: { menu: Menu; venueName: string
               <h1 className="text-xl font-bold leading-tight text-brand">Παραγγελία για παραλαβή</h1>
             </div>
           </div>
-          <p className="text-xs text-ink-2 mt-2">Πληρώνεις στο ταμείο όταν παραλάβεις.</p>
+          <p className="text-xs text-ink-2 mt-2">Παράγγειλε εδώ και πέρασε από το ταμείο να πληρώσεις και να πάρεις βομβητή.</p>
         </header>
         {menu.length > 0 && (
           <nav aria-label="Κατηγορίες" className="bg-surface-2 border-b border-line">
@@ -249,6 +250,7 @@ export function OrderClient({ menu, venueName }: { menu: Menu; venueName: string
             </section>
           ))
         )}
+        <ContactFooter contact={contact} className="pt-2" />
       </main>
 
       {menu.length > 0 && (

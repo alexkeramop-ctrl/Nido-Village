@@ -4,7 +4,7 @@
  * Η πληρωμή γίνεται στο ταμείο κατά την παραλαβή (Φάση 1).
  */
 import { randomBytes } from "node:crypto";
-import { and, asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { emit } from "@/server/events";
 import { getMenu } from "./catalog";
@@ -99,14 +99,28 @@ export type PublicOrder = {
   items: { name: string; qty: number; modifiers: string[]; notes: string | null; status: string; lineTotalCents: number }[];
   totalCents: number;
   paid: boolean;
+  /** Ο βομβητής που πήρε ο πελάτης όταν πλήρωσε στο ταμείο (null πριν την πληρωμή). */
+  buzzerNo: number | null;
   venueName?: string;
 };
 
-function statusOf(s: { status: string; readyAt: Date | null; pickedUpAt: Date | null; items: { status: string }[] }): PublicOrderStatus {
+/** Μετά από τόσες ώρες μια πληρωμένη παραγγελία θεωρείται ολοκληρωμένη ακόμη κι αν κανείς δεν πάτησε «Έτοιμο»/«Παραδόθηκε». */
+const STALE_DONE_MS = 3 * 60 * 60 * 1000;
+/** Πίνακας παραλαβών: μια έτοιμη παραγγελία μένει τόσο· μια παραγγελία που δεν έγινε ποτέ «έτοιμη» φεύγει μετά από STALE_PREPARING_MS. */
+const READY_VISIBLE_MS = 20 * 60 * 1000;
+const STALE_PREPARING_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * Η κατάσταση που βλέπει ο πελάτης. Η ετοιμασία είναι ανεξάρτητη από την πληρωμή: στη ροή self-service
+ * η παραγγελία πληρώνεται (κλείνει) ΠΡΙΝ ετοιμαστεί, άρα «κλειστή» δεν σημαίνει «παραδόθηκε».
+ */
+export function statusOf(s: { status: string; readyAt: Date | null; pickedUpAt: Date | null; closedAt?: Date | null; items: { status: string }[] }): PublicOrderStatus {
   if (s.status === "cancelled") return "cancelled";
-  if (s.status === "closed") return "done";
-  if (s.pickedUpAt) return "picked_up";
+  const closed = s.status === "closed";
+  if (s.pickedUpAt) return closed ? "done" : "picked_up";
   const live = s.items.filter((i) => i.status !== "voided");
+  if (closed && (!live.length || live.every((i) => i.status === "served"))) return "done";
+  if (closed && s.closedAt && Date.now() - s.closedAt.getTime() > STALE_DONE_MS) return "done";
   if (live.length && live.every((i) => i.status === "ready" || i.status === "served")) return "ready";
   if (live.some((i) => i.status === "preparing" || i.status === "ready")) return "preparing";
   return "received";
@@ -140,6 +154,7 @@ export async function getPublicOrder(token: string): Promise<PublicOrder | null>
     })),
     totalCents: Math.max(0, total),
     paid: paid >= total && total > 0,
+    buzzerNo: s.buzzerNo,
   };
 }
 
@@ -149,26 +164,67 @@ export async function getSessionIdForToken(token: string): Promise<number | null
   return s?.id ?? null;
 }
 
-/** Ο πίνακας παραλαβών (οθόνη στο ταμείο): παραγγελίες QR της ημέρας που δεν έχουν παραδοθεί. */
+/**
+ * Ο πίνακας παραλαβών (οθόνη/TV): παραγγελίες της ημέρας που δεν έχουν παραδοθεί —
+ * παραγγελίες QR και πωλήσεις ταμείου με βομβητή, πληρωμένες ή όχι.
+ * Οι έτοιμες μένουν 20 λεπτά· ό,τι δεν έγινε ποτέ «έτοιμο» φεύγει μετά από 2 ώρες.
+ */
 export async function listPickupBoard() {
   const db = await getDb();
   const start = athensDayStart(todayAthens());
   const rows = await db.query.tableSessions.findMany({
-    where: and(eq(schema.tableSessions.source, "qr"), gte(schema.tableSessions.openedAt, start), inArray(schema.tableSessions.status, ["open", "billed"])),
+    where: and(
+      gte(schema.tableSessions.openedAt, start),
+      ne(schema.tableSessions.status, "cancelled"),
+      isNull(schema.tableSessions.pickedUpAt),
+      or(eq(schema.tableSessions.source, "qr"), isNotNull(schema.tableSessions.buzzerNo)),
+    ),
     orderBy: [asc(schema.tableSessions.openedAt)],
     with: { items: true },
   });
+  const now = Date.now();
   return rows
     .map((s) => ({
       sessionId: s.id,
       code: s.pickupCode ?? String(s.id),
+      buzzerNo: s.buzzerNo,
       customerName: s.customerName ?? "",
       status: statusOf(s),
+      paid: s.status === "closed",
       openedAt: s.openedAt.toISOString(),
       readyAt: s.readyAt?.toISOString() ?? null,
       itemCount: s.items.filter((i) => i.status !== "voided").reduce((n, i) => n + i.qty, 0),
     }))
-    .filter((r) => r.status !== "picked_up" && r.status !== "cancelled");
+    .filter((r) => r.status === "received" || r.status === "preparing" || r.status === "ready")
+    .filter((r) =>
+      r.status === "ready" ? now - new Date(r.readyAt ?? r.openedAt).getTime() <= READY_VISIBLE_MS : now - new Date(r.openedAt).getTime() <= STALE_PREPARING_MS,
+    );
+}
+
+/** Έτοιμες παραγγελίες (QR / ταμείου) που περιμένουν τον πελάτη: για τη λωρίδα «προς παράδοση» σε κουζίνα/μπαρ και ταμείο. */
+export async function listReadyForPickup() {
+  const db = await getDb();
+  const start = athensDayStart(todayAthens());
+  const since = new Date(Date.now() - 45 * 60 * 1000);
+  const rows = await db.query.tableSessions.findMany({
+    where: and(
+      gte(schema.tableSessions.openedAt, start),
+      ne(schema.tableSessions.status, "cancelled"),
+      isNull(schema.tableSessions.pickedUpAt),
+      gte(schema.tableSessions.readyAt, since),
+      inArray(schema.tableSessions.source, ["qr", "till"]),
+    ),
+    orderBy: [asc(schema.tableSessions.readyAt)],
+  });
+  return rows.map((s) => ({
+    sessionId: s.id,
+    buzzerNo: s.buzzerNo,
+    code: s.pickupCode,
+    customerName: s.customerName ?? "",
+    name: s.buzzerNo ? `Βομβητής ${s.buzzerNo}` : s.pickupCode ? `#${s.pickupCode}` : s.customerName || s.label || `#${s.id}`,
+    readyAt: s.readyAt!.toISOString(),
+    paid: s.status === "closed",
+  }));
 }
 
 /** Το ταμείο σημειώνει ότι ο πελάτης παρέλαβε (και σερβιρίστηκαν τα είδη). */

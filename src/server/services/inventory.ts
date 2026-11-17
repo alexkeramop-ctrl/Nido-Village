@@ -176,6 +176,52 @@ export async function applyRecipeMovements(
   }
 }
 
+export type RecipeMovementEntry = { productId: number; modifierIds: number[]; qty: number; refId: number };
+
+/**
+ * Όπως η applyRecipeMovements αλλά για πολλά είδη μαζί (ένας γύρος παραγγελίας):
+ * ΕΝΑ ερώτημα συνταγών, ΜΙΑ εγγραφή κινήσεων και ΜΙΑ ενημέρωση αποθέματος, αντί για 3–4 ερωτήματα ανά είδος.
+ * Γράφει τις ίδιες ακριβώς κινήσεις (μία ανά είδος παραγγελίας και πρώτη ύλη).
+ */
+export async function applyRecipeMovementsBatch(
+  db: DbLike,
+  entries: RecipeMovementEntry[],
+  opts: { kind: "sale" | "void_reversal"; refType: string; employeeId: number },
+) {
+  if (!entries.length) return;
+  const productIds = [...new Set(entries.map((e) => e.productId))];
+  const modifierIds = [...new Set(entries.flatMap((e) => e.modifierIds))];
+  const conds = [inArray(schema.recipeLines.productId, productIds)];
+  if (modifierIds.length) conds.push(inArray(schema.recipeLines.modifierId, modifierIds));
+  const lines = await db.query.recipeLines.findMany({ where: conds.length > 1 ? or(...conds) : conds[0] });
+  if (!lines.length) return;
+  const sign = opts.kind === "sale" ? -1 : 1;
+  const movements: (typeof schema.stockMovements.$inferInsert)[] = [];
+  const perIngredient = new Map<number, number>();
+  for (const e of entries) {
+    const mods = new Set(e.modifierIds);
+    const totals = new Map<number, number>();
+    for (const l of lines) {
+      if (l.productId === e.productId || (l.modifierId !== null && mods.has(l.modifierId))) {
+        totals.set(l.ingredientId, (totals.get(l.ingredientId) ?? 0) + num(l.qty) * e.qty * sign);
+      }
+    }
+    for (const [ingredientId, delta] of totals) {
+      movements.push({ ingredientId, kind: opts.kind, qtyDelta: qty3(delta), refType: opts.refType, refId: e.refId, employeeId: opts.employeeId });
+      perIngredient.set(ingredientId, (perIngredient.get(ingredientId) ?? 0) + delta);
+    }
+  }
+  if (!movements.length) return;
+  await db.insert(schema.stockMovements).values(movements);
+  const values = sql.join(
+    [...perIngredient].map(([id, delta]) => sql`(${id}::int, ${qty3(delta)}::numeric)`),
+    sql`, `,
+  );
+  await db.execute(
+    sql`update ${schema.ingredients} set stock_qty = ${schema.ingredients.stockQty} + v.delta from (values ${values}) as v(id, delta) where ${schema.ingredients.id} = v.id`,
+  );
+}
+
 /* -------------------------- Παραλαβές / φύρα / απογραφή -------------------------- */
 
 export async function receiveGoods(

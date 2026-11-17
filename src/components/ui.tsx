@@ -76,6 +76,8 @@ export function Numpad({
   mode = "amount",
   submitLabel = "OK",
   disabled,
+  compact = false,
+  maxLength,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -83,6 +85,9 @@ export function Numpad({
   mode?: "pin" | "amount" | "int";
   submitLabel?: string;
   disabled?: boolean;
+  /** Χαμηλότερα πλήκτρα, για να χωρά δίπλα σε άλλα στοιχεία (π.χ. πληρωμή στο ταμείο). */
+  compact?: boolean;
+  maxLength?: number;
 }) {
   const press = (k: string) => {
     if (k === "⌫") return onChange(value.slice(0, -1));
@@ -90,18 +95,20 @@ export function Numpad({
     if (k === "," && (mode !== "amount" || value.includes(","))) return;
     if (mode === "pin" && value.length >= 8) return;
     if (mode === "amount" && value.includes(",") && value.split(",")[1].length >= 2) return;
+    if (maxLength && value.length >= maxLength) return;
     onChange(value + k);
   };
   const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", mode === "amount" ? "," : "C", "0", "⌫"];
   return (
-    <div className="grid grid-cols-3 gap-2 touch">
+    <div className={`grid grid-cols-3 touch ${compact ? "gap-1.5" : "gap-2"}`}>
       {keys.map((k) => (
         <button
           key={k}
           type="button"
           disabled={disabled}
           onClick={() => press(k)}
-          className="btn-secondary text-2xl py-4 rounded-2xl"
+          aria-label={k === "⌫" ? "Σβήσιμο" : k === "C" ? "Καθαρισμός" : k === "," ? "Υποδιαστολή" : undefined}
+          className={`btn-secondary ${compact ? "text-xl! py-2! rounded-xl!" : "text-2xl py-4 rounded-2xl"}`}
         >
           {k}
         </button>

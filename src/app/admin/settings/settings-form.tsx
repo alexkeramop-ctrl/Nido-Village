@@ -3,7 +3,7 @@ import { Field } from "@/components/ui";
 import { Section, formValues, useActionRunner } from "@/components/admin/common";
 import { saveSettingsAction } from "./actions";
 
-type Settings = { venueName: string; vatNumber: string; taxOffice: string; address: string; phone: string; courses: number };
+type Settings = { venueName: string; vatNumber: string; taxOffice: string; address: string; phone: string; email: string; courses: number };
 
 export function SettingsForm({ settings }: { settings: Settings }) {
   const { run, pending, toastElement } = useActionRunner();
@@ -23,6 +23,7 @@ export function SettingsForm({ settings }: { settings: Settings }) {
                 taxOffice: v.str("taxOffice"),
                 address: v.str("address"),
                 phone: v.str("phone"),
+                email: v.str("email"),
                 courses: v.int("courses", 3),
               }),
             { success: "Οι ρυθμίσεις αποθηκεύτηκαν" },
@@ -42,6 +43,9 @@ export function SettingsForm({ settings }: { settings: Settings }) {
         </div>
         <Field label="Διεύθυνση">
           <input name="address" className="input" defaultValue={settings.address} />
+        </Field>
+        <Field label="Email επικοινωνίας" hint="Εμφανίζεται στο site παραγγελιών (σελίδα QR και κατάσταση παραγγελίας) και στην απόδειξη. Άφησέ το κενό για να μη φαίνεται.">
+          <input name="email" className="input" type="email" inputMode="email" autoComplete="off" placeholder="π.χ. info@nidovillage.gr" defaultValue={settings.email} />
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Τηλέφωνο">

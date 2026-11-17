@@ -4,11 +4,14 @@ import { run } from "@/server/action";
 import { requireRole } from "@/server/auth";
 import { upsertVatRate } from "@/server/services/catalog";
 import { saveSettings } from "@/server/services/settings";
+import { upsertRegister } from "@/server/services/registers";
 
-export async function saveSettingsAction(input: { venueName: string; vatNumber: string; taxOffice: string; address: string; phone: string; courses: number }) {
+export async function saveSettingsAction(input: { venueName: string; vatNumber: string; taxOffice: string; address: string; phone: string; email: string; courses: number }) {
   return run(async () => {
     await requireRole("admin");
     if (!input.venueName.trim()) throw new Error("Απαιτείται επωνυμία");
+    const email = String(input.email ?? "").trim().slice(0, 120);
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) throw new Error("Μη έγκυρο email");
     const courses = Math.min(5, Math.max(1, Math.round(input.courses)));
     await saveSettings({
       venueName: input.venueName.trim(),
@@ -16,9 +19,20 @@ export async function saveSettingsAction(input: { venueName: string; vatNumber: 
       taxOffice: input.taxOffice.trim(),
       address: input.address.trim(),
       phone: input.phone.trim(),
+      email,
       courses,
     });
     revalidatePath("/admin/settings");
+    revalidatePath("/order");
+  });
+}
+
+export async function saveRegisterAction(input: { id?: number; name: string; sort?: number; active: boolean }) {
+  return run(async () => {
+    const user = await requireRole("admin");
+    await upsertRegister({ id: input.id, name: String(input.name ?? ""), sort: Number.isFinite(input.sort) ? input.sort : undefined, active: !!input.active }, user.id);
+    revalidatePath("/admin/settings");
+    revalidatePath("/cashier");
   });
 }
 

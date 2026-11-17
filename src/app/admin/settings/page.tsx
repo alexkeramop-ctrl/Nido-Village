@@ -5,6 +5,8 @@ import { requirePageUser } from "@/server/page-auth";
 import { publisherStatus } from "@/server/cloud/publisher";
 import { listVatRates } from "@/server/services/catalog";
 import { getSettings } from "@/server/services/settings";
+import { listRegisters } from "@/server/services/registers";
+import { RegistersTable } from "./registers-table";
 import { SettingsForm } from "./settings-form";
 import { VatTable } from "./vat-table";
 
@@ -12,14 +14,15 @@ export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   await requirePageUser("admin");
-  const [settings, vatRates] = await Promise.all([getSettings(), listVatRates()]);
+  const [settings, vatRates, registers] = await Promise.all([getSettings(), listVatRates(), listRegisters(true)]);
   const cloud = publisherStatus();
   const mode = process.env.NIDO_MODE === "cloud" ? "cloud" : "store";
   return (
     <div className="space-y-4">
-      <PageHeader title="Ρυθμίσεις" subtitle="Στοιχεία καταστήματος, συντελεστές ΦΠΑ, σύνδεση cloud και φορολογικά." />
+      <PageHeader title="Ρυθμίσεις" subtitle="Στοιχεία καταστήματος, ταμεία, συντελεστές ΦΠΑ, σύνδεση cloud και φορολογικά." />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
         <SettingsForm settings={settings} />
+        <RegistersTable registers={registers.map((r) => ({ id: r.id, name: r.name, sort: r.sort, active: r.active, openShift: r.openShift !== null }))} />
         <VatTable rates={vatRates.map((v) => ({ id: v.id, name: v.name, ratePct: Number(v.ratePct), mydataCategory: v.mydataCategory, active: v.active }))} />
         <Section title="Σύνδεση cloud">
           <div className="space-y-3 text-sm">

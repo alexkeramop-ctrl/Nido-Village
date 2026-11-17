@@ -24,6 +24,15 @@ export async function enqueue(db: DbLike, stationId: number, kind: PrintJobKind,
   return job;
 }
 
+/** Πολλές εργασίες με ΜΙΑ εγγραφή. Παίρνει τη γραμμή του σταθμού (δεν ξαναρωτά τη βάση για κάθε εργασία). */
+export async function enqueueMany(db: DbLike, jobs: { station: { id: number; columns: number }; kind: PrintJobKind; doc: TicketDoc }[]) {
+  if (!jobs.length) return [];
+  return db
+    .insert(schema.printJobs)
+    .values(jobs.map((j) => ({ stationId: j.station.id, kind: j.kind, payload: j.doc, renderedText: renderText(j.doc, j.station.columns), status: "queued" as const })))
+    .returning();
+}
+
 /** Βρίσκει τον σταθμό απόδειξης/ταμείου (kind = receipt). */
 export async function findReceiptStation(db: DbLike) {
   return db.query.printStations.findFirst({

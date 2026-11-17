@@ -40,17 +40,28 @@ export type KitchenTicketInput = {
   time: Date;
   items: KitchenItem[];
   notes?: string | null;
+  /** Αριθμός βομβητή του πελάτη: τυπώνεται με μεγάλα γράμματα στην κορυφή. */
+  buzzerNo?: number | null;
+  customerName?: string | null;
+  /** Αντικαθιστά την ετικέτα του τύπου παραγγελίας (π.χ. «ΤΑΜΕΙΟ» για πώληση self-service). */
+  typeLabel?: string | null;
 };
 
 const ORDER_TYPE_LABEL = { dine_in: "ΤΡΑΠΕΖΙ", takeaway: "ΠΑΚΕΤΟ", delivery: "DELIVERY" } as const;
+export const BUZZER_LABEL = "ΒΟΜΒΗΤΗΣ";
 const COURSE_LABEL: Record<number, string> = { 1: "1ο ΠΙΑΤΟ", 2: "2ο ΠΙΑΤΟ", 3: "3ο ΠΙΑΤΟ", 4: "ΕΠΙΔΟΡΠΙΟ" };
 
 export function kitchenTicket(i: KitchenTicketInput): TicketDoc {
   const t = new Ticket();
   t.beep();
   t.text(i.stationName, { align: "center", bold: true });
-  t.title(`${ORDER_TYPE_LABEL[i.orderType]} ${i.tableName}`);
+  const head = `${i.typeLabel || ORDER_TYPE_LABEL[i.orderType]} ${i.tableName}`;
+  if (i.buzzerNo) {
+    t.title(`${BUZZER_LABEL} ${i.buzzerNo}`);
+    t.center(head, true);
+  } else t.title(head);
   if (i.label && i.label !== i.tableName) t.center(i.label, true);
+  if (i.customerName && i.customerName !== i.label && !i.tableName.includes(i.customerName)) t.center(i.customerName, true);
   t.row(`Γύρος ${i.roundNo}`, fmtTime(i.time));
   t.row(`Σερβ.: ${i.waiter}`, fmtDateTime(i.time).slice(0, 10));
   t.hr("=");
@@ -82,17 +93,32 @@ export function voidTicket(i: {
   time: Date;
   item: KitchenItem;
   reason: string;
+  buzzerNo?: number | null;
 }): TicketDoc {
   const t = new Ticket();
   t.beep().beep();
   t.text(i.stationName, { align: "center", bold: true });
   t.title("*** ΑΚΥΡΩΣΗ ***");
+  if (i.buzzerNo) t.title(`${BUZZER_LABEL} ${i.buzzerNo}`);
   t.title(i.tableName);
   t.row(`Σερβ.: ${i.waiter}`, fmtTime(i.time));
   t.hr("=");
   t.text(`${i.item.qty} x ${i.item.name}`, { bold: true, size: 2 });
   for (const m of i.item.modifiers) t.text(`   + ${m}`);
   t.text(`Αιτία: ${i.reason}`, { bold: true });
+  t.hr("=");
+  t.cut();
+  return t.doc();
+}
+
+/** Μικρό δελτίο προς κουζίνα/μπαρ: μια παραγγελία που ήδη ετοιμάζεται πήρε βομβητή (π.χ. παραγγελία QR που πληρώθηκε στο ταμείο). */
+export function buzzerSlip(i: { stationName: string; buzzerNo: number; orderName: string; time: Date }): TicketDoc {
+  const t = new Ticket();
+  t.beep();
+  t.text(i.stationName, { align: "center", bold: true });
+  t.title(`${BUZZER_LABEL} ${i.buzzerNo}`);
+  t.center(`για την παραγγελία ${i.orderName}`, true);
+  t.center(fmtTime(i.time));
   t.hr("=");
   t.cut();
   return t.doc();
@@ -145,7 +171,7 @@ export function billTicket(i: BillInput): TicketDoc {
 }
 
 export type ReceiptInput = BillInput & {
-  venue: { vatNumber: string; address: string; phone: string; taxOffice: string };
+  venue: { vatNumber: string; address: string; phone: string; taxOffice: string; email?: string };
   fiscal: { series?: string; number?: string; mark?: string; uid?: string; qrUrl?: string; providerName: string };
   payments: { method: "cash" | "card" | "other"; amountCents: number; posTransactionId?: string | null }[];
 };
@@ -158,6 +184,7 @@ export function receiptTicket(i: ReceiptInput): TicketDoc {
   t.center(i.venue.address);
   t.center(`ΑΦΜ ${i.venue.vatNumber} · ΔΟΥ ${i.venue.taxOffice}`);
   t.center(`Τηλ. ${i.venue.phone}`);
+  if (i.venue.email) t.center(`Email: ${i.venue.email}`);
   t.hr("=");
   t.center("ΑΠΟΔΕΙΞΗ ΛΙΑΝΙΚΗΣ ΠΩΛΗΣΗΣ", true);
   t.row(`${i.fiscal.series ?? ""} ${i.fiscal.number ?? ""}`.trim(), fmtDateTime(i.time));
