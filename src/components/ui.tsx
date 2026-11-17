@@ -38,9 +38,9 @@ export function Modal({
   }, [open, onClose]);
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/55 backdrop-blur-sm p-0 sm:p-4" onClick={onClose}>
       <div
-        className={`bg-surface-2 w-full ${wide ? "sm:max-w-3xl" : "sm:max-w-md"} rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[92vh] flex flex-col`}
+        className={`glass-modal text-ink w-full ${wide ? "sm:max-w-3xl" : "sm:max-w-md"} rounded-t-2xl sm:rounded-2xl max-h-[92vh] flex flex-col`}
         onClick={(e) => e.stopPropagation()}
       >
         {title && (

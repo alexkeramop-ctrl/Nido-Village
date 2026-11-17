@@ -23,3 +23,25 @@ describe("demo PINs", () => {
     expect(() => demoPins("12a4")).toThrow();
   });
 });
+
+describe("καθαρό ξεκίνημα online", () => {
+  it("με NIDO_ADMIN_PIN φορτώνεται μόνο ο διαχειριστής, χωρίς demo μενού/αποθήκη/τραπέζια", async () => {
+    const { seedClean, seedMode } = await import("@/db/seed");
+    const { getDb, schema } = await import("@/db");
+    const prev = process.env.NIDO_ADMIN_PIN;
+    process.env.NIDO_ADMIN_PIN = "907153";
+    try {
+      expect(seedMode()).toBe("clean");
+      const db = await getDb();
+      await seedClean(db);
+      expect((await db.select().from(schema.employees)).map((e) => e.role)).toEqual(["admin"]);
+      expect(await db.select().from(schema.products)).toHaveLength(0);
+      expect(await db.select().from(schema.ingredients)).toHaveLength(0);
+      expect(await db.select().from(schema.tables)).toHaveLength(0);
+      expect(await db.select().from(schema.areas)).toHaveLength(0);
+    } finally {
+      if (prev === undefined) delete process.env.NIDO_ADMIN_PIN;
+      else process.env.NIDO_ADMIN_PIN = prev;
+    }
+  });
+});

@@ -174,7 +174,7 @@ export function OrderClient({ menu, venueName }: { menu: Menu; venueName: string
   return (
     <div className="flex-1 flex flex-col max-w-lg w-full mx-auto min-h-full">
       <div ref={stickyRef} className="sticky top-0 z-30 bg-surface">
-        <header className="bg-cream px-4 pt-3 pb-3 border-b border-line">
+        <header className="bg-[#12201a]/60 backdrop-blur-xl px-4 pt-3 pb-3 border-b border-line">
           <div className="flex items-center gap-3">
             <Mark height={44} />
             <div className="min-w-0">

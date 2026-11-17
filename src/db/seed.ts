@@ -383,11 +383,47 @@ export async function seedDemo(db: Db): Promise<boolean> {
 
   await db.insert(schema.settings).values({
     key: "venue",
-    value: { venueName: "Nido Village", vatNumber: "", taxOffice: "", address: "Βασιλικά Θέρμης, 57006", phone: "697 488 2737", courses: 1 },
+    value: { venueName: "Nido Village", vatNumber: "", taxOffice: "", address: "Βασιλικά Θέρμης, 57006", phone: "694 627 3127", courses: 1 },
   });
   // Demo χρήστης για το online dashboard συνεταίρων (/partners). Όχι όταν το σύστημα στήνεται online με δικό του PIN.
   if (!pins.custom) {
     await db.insert(schema.partnerUsers).values({ name: "Συνεταίρος (demo)", email: "partner@nido.demo", passwordHash: hashPin("nido-demo-2026") });
   }
   return true;
+}
+
+/**
+ * Καθαρό ξεκίνημα (online): μόνο τα απαραίτητα για να δουλέψει το σύστημα.
+ * Ένας διαχειριστής με το NIDO_ADMIN_PIN, συντελεστές ΦΠΑ, σταθμοί εκτύπωσης και στοιχεία καταστήματος.
+ * Μενού, αποθήκη, χώροι, τραπέζια και προσωπικό τα περνά ο ίδιος ο διαχειριστής.
+ */
+export async function seedClean(db: Db): Promise<boolean> {
+  const existing = await db.select({ n: sql<number>`count(*)::int` }).from(schema.employees);
+  if ((existing[0]?.n ?? 0) > 0) return false;
+  const pin = process.env.NIDO_ADMIN_PIN;
+  if (!pin || !/^\d{4,8}$/.test(pin)) throw new Error("[nido] Το NIDO_ADMIN_PIN πρέπει να είναι 4–8 ψηφία.");
+  await db.insert(schema.employees).values({ name: "Διαχειριστής", role: "admin", pinHash: hashPin(pin), pinEncrypted: encryptPin(pin) });
+  await db.insert(schema.vatRates).values([
+    { name: "Μειωμένος 13%", ratePct: "13.00", mydataCategory: 2 },
+    { name: "Κανονικός 24%", ratePct: "24.00", mydataCategory: 1 },
+    { name: "Υπερμειωμένος 6%", ratePct: "6.00", mydataCategory: 3 },
+    { name: "Απαλλαγή 0%", ratePct: "0.00", mydataCategory: 7 },
+  ]);
+  await db.insert(schema.printStations).values([
+    { name: "Κουζίνα", kind: "kitchen", driver: "console", sort: 1 },
+    { name: "Μπαρ", kind: "bar", driver: "console", sort: 2 },
+    { name: "Ταμείο", kind: "receipt", driver: "console", sort: 3, drawerKick: true },
+  ]);
+  await db.insert(schema.settings).values({
+    key: "venue",
+    value: { venueName: "Nido Village", vatNumber: "", taxOffice: "", address: "Βασιλικά Θέρμης, 57006", phone: "694 627 3127", courses: 1 },
+  });
+  return true;
+}
+
+/** Τι φορτώνεται σε άδεια βάση: NIDO_SEED=clean|demo. Προεπιλογή: καθαρό όταν υπάρχει NIDO_ADMIN_PIN (online), αλλιώς demo. */
+export function seedMode(): "clean" | "demo" {
+  const m = process.env.NIDO_SEED;
+  if (m === "clean" || m === "demo") return m;
+  return process.env.NIDO_ADMIN_PIN ? "clean" : "demo";
 }

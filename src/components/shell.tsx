@@ -15,7 +15,7 @@ export function Shell({ user, children, active, dark = false, title }: { user: S
   const links = NAV.filter((n) => n.roles.includes(user.role));
   return (
     <div className={`min-h-full flex-1 flex flex-col ${dark ? "bg-dark text-white" : ""}`}>
-      <header className={`sticky top-0 z-40 ${dark ? "bg-dark-2 border-dark-3" : "bg-surface-2 border-line"} border-b`}>
+      <header className="sticky top-0 z-40 border-b border-line bg-[#12201a]/60 backdrop-blur-xl">
         <div className="flex items-center gap-2 px-3 h-12">
           <Link href="/" className="mr-2 flex items-center" aria-label="Αρχική">
             <Mark height={30} />

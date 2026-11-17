@@ -221,7 +221,7 @@ export function EventForm({
         </Field>
       </div>
       {isParty && (
-        <fieldset className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 space-y-3">
+        <fieldset className="rounded-xl border border-amber-300/30 bg-amber-300/[0.07] p-3 space-y-3">
           <legend className="px-1 text-sm font-semibold">🎂 Στοιχεία πάρτι</legend>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="col-span-2">
@@ -283,7 +283,7 @@ export function EventForm({
               {PARTY_EXTRAS.map((x) => {
                 const on = party.extras?.includes(x.key) ?? false;
                 return (
-                  <label key={x.key} className={`cursor-pointer rounded-full border px-3 py-1 text-sm ${on ? "bg-amber-200 border-amber-300" : "bg-white border-line"}`}>
+                  <label key={x.key} className={`cursor-pointer rounded-full border px-3 py-1 text-sm ${on ? "bg-amber-300/30 border-amber-300/60 text-amber-100" : "bg-surface-3 border-line"}`}>
                     <input
                       type="checkbox"
                       className="sr-only"
@@ -301,7 +301,7 @@ export function EventForm({
             </div>
           </div>
           {quote && (
-            <div className="rounded-lg bg-white border border-line p-3 text-sm">
+            <div className="rounded-lg bg-surface-3 border border-line p-3 text-sm">
               <ul className="space-y-0.5">
                 {quote.lines.map((l) => (
                   <li key={l.label} className="flex justify-between gap-3">

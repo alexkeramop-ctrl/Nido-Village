@@ -118,7 +118,7 @@ export function QrClient({ venueName, orderUrl, pickupUrl, qrDataUrl, orders }: 
       </div>
 
       <Section title="Καρτέλα για το τραπέζι / ταμείο" actions={<span className="text-xs text-ink-3">Προεπισκόπηση εκτύπωσης · «Εκτύπωση» τυπώνει μόνο αυτό</span>}>
-        <div id="qr-tent" className="mx-auto max-w-sm rounded-2xl border-2 border-dashed border-line bg-white text-ink p-8 text-center space-y-4">
+        <div id="qr-tent" className="mx-auto max-w-sm rounded-2xl border-2 border-dashed border-[#cfcfc8] bg-white text-[#16181d] p-8 text-center space-y-4 [&_*]:text-[#16181d]">
           <div className="text-3xl font-black tracking-tight">{venueName}</div>
           <div className="text-lg font-semibold">Σκάναρε για παραγγελία take away</div>
           {/* eslint-disable-next-line @next/next/no-img-element -- data URL */}
