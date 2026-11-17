@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 
-const PUBLIC = ["/login", "/partners/login", "/api/health", "/api/sync", "/api/public", "/api/assets", "/order", "/pickup", "/brand", "/icons", "/manifest.webmanifest", "/sw.js", "/offline.html"];
+const PUBLIC = ["/login", "/partners/login", "/api/health", "/api/sync", "/api/public", "/api/assets", "/order", "/pickup", "/brand", "/icons", "/manifest.webmanifest", "/sw.js", "/offline", "/offline.html"];
 
 function secret() {
   return new TextEncoder().encode(process.env.NIDO_SECRET ?? "nido-village-dev-secret-change-me");
