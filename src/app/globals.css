@@ -178,3 +178,32 @@ input[type="time"].input {
     box-shadow: none !important;
   }
 }
+
+/* Ταξινομήσιμες στήλες */
+th.th-sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+th.th-sortable:hover {
+  color: var(--color-ink);
+}
+th.th-sortable::after {
+  content: "↕";
+  margin-left: 0.3em;
+  opacity: 0.3;
+  font-size: 0.9em;
+}
+th.th-sortable[aria-sort="ascending"]::after {
+  content: "▲";
+  opacity: 0.9;
+}
+th.th-sortable[aria-sort="descending"]::after {
+  content: "▼";
+  opacity: 0.9;
+}
+@media print {
+  th.th-sortable::after {
+    content: none;
+  }
+}

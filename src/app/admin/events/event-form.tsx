@@ -1,11 +1,12 @@
 "use client";
 import { useState } from "react";
 import { Field } from "@/components/ui";
-import { FormModal, InfoBox, Toggle, formValues, type useActionRunner } from "@/components/admin/common";
+import { FormModal, InfoBox, Time24, Toggle, formValues, type useActionRunner } from "@/components/admin/common";
 import { centsToInput } from "@/components/admin/format";
 import { parseEuroToCents } from "@/server/money";
 import type { EventStatus, EventType, PartyDetails } from "@/db/schema";
 import { EVENT_STATUSES } from "@/components/admin/events/meta";
+import { longDateLabel } from "@/components/admin/events/dates";
 import { ADULT_MENUS, PARTY_EXTRAS, PARTY_MINUTES, PARTY_PACKAGES, addMinutes, isMonToThu, quoteParty } from "@/components/admin/events/party";
 import { Money } from "@/components/ui";
 import type { AreaOption, ConflictRow, EventFormInput, EventRow } from "@/components/admin/events/types";
@@ -177,7 +178,7 @@ export function EventForm({
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <div className="col-span-2 sm:col-span-1">
-          <Field label="Ημερομηνία">
+          <Field label="Ημερομηνία" hint={date ? longDateLabel(date) : undefined}>
             <input
               name="date"
               type="date"
@@ -192,29 +193,23 @@ export function EventForm({
           </Field>
         </div>
         <Field label="Έναρξη">
-          <input
+          <Time24
             name="startTime"
-            type="time"
-            className="input num"
-            required
             value={startTime}
-            onChange={(e) => {
-              setStartTime(e.target.value);
-              if (isParty) setEndTime(addMinutes(e.target.value, PARTY_MINUTES + (party.extras?.includes("extra_hour") ? 60 : 0)));
-              if (type === "appointment") setEndTime(addMinutes(e.target.value, 60));
+            onChange={(v) => {
+              setStartTime(v);
+              if (isParty) setEndTime(addMinutes(v, PARTY_MINUTES + (party.extras?.includes("extra_hour") ? 60 : 0)));
+              if (type === "appointment") setEndTime(addMinutes(v, 60));
               clearConflicts();
             }}
           />
         </Field>
         <Field label="Λήξη">
-          <input
+          <Time24
             name="endTime"
-            type="time"
-            className="input num"
-            required
             value={endTime}
-            onChange={(e) => {
-              setEndTime(e.target.value);
+            onChange={(v) => {
+              setEndTime(v);
               clearConflicts();
             }}
           />
