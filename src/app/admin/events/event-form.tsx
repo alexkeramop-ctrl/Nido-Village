@@ -4,8 +4,10 @@ import { Field } from "@/components/ui";
 import { FormModal, InfoBox, Toggle, formValues, type useActionRunner } from "@/components/admin/common";
 import { centsToInput } from "@/components/admin/format";
 import { parseEuroToCents } from "@/server/money";
-import type { EventStatus, EventType } from "@/db/schema";
-import { EVENT_STATUSES, EVENT_TYPES } from "@/components/admin/events/meta";
+import type { EventStatus, EventType, PartyDetails } from "@/db/schema";
+import { EVENT_STATUSES } from "@/components/admin/events/meta";
+import { ADULT_MENUS, PARTY_EXTRAS, PARTY_MINUTES, PARTY_PACKAGES, addMinutes, isMonToThu, quoteParty } from "@/components/admin/events/party";
+import { Money } from "@/components/ui";
 import type { AreaOption, ConflictRow, EventFormInput, EventRow } from "@/components/admin/events/types";
 import { checkConflictsAction, saveEventAction } from "./actions";
 
@@ -27,6 +29,8 @@ export function EventForm({
   areas,
   typeLabels,
   statusLabels,
+  allowedTypes,
+  defaultType,
   runner,
   onSaved,
 }: {
@@ -37,11 +41,27 @@ export function EventForm({
   areas: AreaOption[];
   typeLabels: Record<EventType, string>;
   statusLabels: Record<EventStatus, string>;
+  allowedTypes: EventType[];
+  defaultType: EventType;
   runner: Pick<Runner, "run" | "pending" | "toast">;
   onSaved: () => void;
 }) {
   const { run, pending, toast } = runner;
   const [conflicts, setConflicts] = useState<{ key: string; rows: ConflictRow[] } | null>(null);
+  const [type, setType] = useState<EventType>(initial?.type ?? defaultType);
+  const [date, setDate] = useState(initial?.date ?? defaultDate);
+  const [party, setParty] = useState<PartyDetails>(
+    initial?.party ?? { kids: 15, adults: 15, package: "bounce", adultMenu: "classic", extras: [], childName: "", childAge: null, theme: "", cake: "" },
+  );
+  const [price, setPrice] = useState(initial ? centsToInput(initial.priceCents) : "");
+  const [startTime, setStartTime] = useState(initial?.startTime ?? (defaultType === "party" ? "11:00" : defaultType === "appointment" ? "18:00" : "12:00"));
+  const [endTime, setEndTime] = useState(
+    initial?.endTime ?? (defaultType === "party" ? addMinutes("11:00", PARTY_MINUTES) : defaultType === "appointment" ? "19:00" : "16:00"),
+  );
+  const isParty = type === "party";
+  const quote = isParty ? quoteParty(party, date) : null;
+  const setP = (patch: Partial<PartyDetails>) => setParty((p) => ({ ...p, ...patch }));
+  const typeChoices = initial && !allowedTypes.includes(initial.type) ? [...allowedTypes, initial.type] : allowedTypes;
 
   function buildInput(fd: FormData): EventFormInput | null {
     const v = formValues(fd);
@@ -68,7 +88,7 @@ export function EventForm({
       date: v.str("date"),
       startTime,
       endTime,
-      guests: v.int("guests"),
+      guests: isParty ? (party.kids ?? 0) + (party.adults ?? 0) : v.int("guests"),
       areaId: v.intOrNull("areaId"),
       customerName: v.str("customerName"),
       customerPhone: v.strOrNull("customerPhone"),
@@ -78,6 +98,7 @@ export function EventForm({
       depositPaid: v.bool("depositPaid"),
       menuNotes: v.strOrNull("menuNotes"),
       notes: v.strOrNull("notes"),
+      party: isParty ? party : null,
     };
   }
 
@@ -115,19 +136,29 @@ export function EventForm({
     <FormModal
       open={open}
       onClose={onClose}
-      title={isEdit ? "Επεξεργασία εκδήλωσης" : "Νέα εκδήλωση"}
+      title={isEdit ? `Επεξεργασία: ${typeLabels[type]}` : isParty ? "Νέο παιδικό πάρτι" : type === "appointment" ? "Νέο ραντεβού" : "Νέα κράτηση"}
       onSubmit={submit}
       pending={pending}
       submitLabel={conflicts ? "Αποθήκευση παρόλα αυτά" : "Αποθήκευση"}
       wide
     >
       <Field label="Τίτλος">
-        <input name="title" className="input" required defaultValue={initial?.title ?? ""} placeholder="π.χ. Βάφτιση Μαρίας" autoFocus />
+        <input name="title" className="input" required defaultValue={initial?.title ?? ""} placeholder={isParty ? "π.χ. Πάρτι Γιώργου" : type === "appointment" ? "π.χ. Γνωριμία – γάμος Παπαδόπουλου" : "π.χ. Βάφτιση Μαρίας"} autoFocus />
       </Field>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="Τύπος">
-          <select name="type" className="input" defaultValue={initial?.type ?? "party"}>
-            {EVENT_TYPES.map((t) => (
+          <select
+            name="type"
+            className="input"
+            value={type}
+            onChange={(e) => {
+              const t = e.target.value as EventType;
+              setType(t);
+              if (!isEdit && t === "party") setEndTime(addMinutes(startTime, PARTY_MINUTES));
+              if (!isEdit && t === "appointment") setEndTime(addMinutes(startTime, 60));
+            }}
+          >
+            {typeChoices.map((t) => (
               <option key={t} value={t}>
                 {typeLabels[t]}
               </option>
@@ -147,20 +178,157 @@ export function EventForm({
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <div className="col-span-2 sm:col-span-1">
           <Field label="Ημερομηνία">
-            <input name="date" type="date" className="input num" required defaultValue={initial?.date ?? defaultDate} onChange={clearConflicts} />
+            <input
+              name="date"
+              type="date"
+              className="input num"
+              required
+              value={date}
+              onChange={(e) => {
+                setDate(e.target.value);
+                clearConflicts();
+              }}
+            />
           </Field>
         </div>
         <Field label="Έναρξη">
-          <input name="startTime" type="time" className="input num" required defaultValue={initial?.startTime ?? "12:00"} onChange={clearConflicts} />
+          <input
+            name="startTime"
+            type="time"
+            className="input num"
+            required
+            value={startTime}
+            onChange={(e) => {
+              setStartTime(e.target.value);
+              if (isParty) setEndTime(addMinutes(e.target.value, PARTY_MINUTES + (party.extras?.includes("extra_hour") ? 60 : 0)));
+              if (type === "appointment") setEndTime(addMinutes(e.target.value, 60));
+              clearConflicts();
+            }}
+          />
         </Field>
         <Field label="Λήξη">
-          <input name="endTime" type="time" className="input num" required defaultValue={initial?.endTime ?? "16:00"} onChange={clearConflicts} />
+          <input
+            name="endTime"
+            type="time"
+            className="input num"
+            required
+            value={endTime}
+            onChange={(e) => {
+              setEndTime(e.target.value);
+              clearConflicts();
+            }}
+          />
         </Field>
       </div>
+      {isParty && (
+        <fieldset className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 space-y-3">
+          <legend className="px-1 text-sm font-semibold">🎂 Στοιχεία πάρτι</legend>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="col-span-2">
+              <Field label="Όνομα παιδιού">
+                <input className="input" value={party.childName ?? ""} onChange={(e) => setP({ childName: e.target.value })} placeholder="π.χ. Γιώργος" />
+              </Field>
+            </div>
+            <Field label="Γίνεται (ετών)">
+              <input
+                type="number"
+                min={1}
+                max={18}
+                inputMode="numeric"
+                className="input num"
+                value={party.childAge ?? ""}
+                onChange={(e) => setP({ childAge: e.target.value ? Number(e.target.value) : null })}
+              />
+            </Field>
+            <Field label="Θέμα">
+              <input className="input" value={party.theme ?? ""} onChange={(e) => setP({ theme: e.target.value })} placeholder="π.χ. Frozen" />
+            </Field>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="col-span-2">
+              <Field label="Πακέτο">
+                <select className="input" value={party.package ?? ""} onChange={(e) => setP({ package: e.target.value })}>
+                  {PARTY_PACKAGES.map((p) => (
+                    <option key={p.key} value={p.key}>
+                      {p.name} · €{p.perChildCents / 100}/παιδί
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            <Field label="Παιδιά">
+              <input type="number" min={0} inputMode="numeric" className="input num" value={party.kids ?? 0} onChange={(e) => setP({ kids: Number(e.target.value) || 0 })} />
+            </Field>
+            <Field label="Ενήλικες">
+              <input type="number" min={0} inputMode="numeric" className="input num" value={party.adults ?? 0} onChange={(e) => setP({ adults: Number(e.target.value) || 0 })} />
+            </Field>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field label="Μενού ενηλίκων">
+              <select className="input" value={party.adultMenu ?? "none"} onChange={(e) => setP({ adultMenu: e.target.value })}>
+                {ADULT_MENUS.map((m) => (
+                  <option key={m.key} value={m.key}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Τούρτα">
+              <input className="input" value={party.cake ?? ""} onChange={(e) => setP({ cake: e.target.value })} placeholder="π.χ. φέρνουν δική τους / σοκολάτα 2 κιλά" />
+            </Field>
+          </div>
+          <div>
+            <div className="text-sm font-medium mb-1">Έξτρα</div>
+            <div className="flex flex-wrap gap-2">
+              {PARTY_EXTRAS.map((x) => {
+                const on = party.extras?.includes(x.key) ?? false;
+                return (
+                  <label key={x.key} className={`cursor-pointer rounded-full border px-3 py-1 text-sm ${on ? "bg-amber-200 border-amber-300" : "bg-white border-line"}`}>
+                    <input
+                      type="checkbox"
+                      className="sr-only"
+                      checked={on}
+                      onChange={() => {
+                        const extras = on ? (party.extras ?? []).filter((k) => k !== x.key) : [...(party.extras ?? []), x.key];
+                        setP({ extras });
+                        if (x.key === "extra_hour") setEndTime(addMinutes(startTime, PARTY_MINUTES + (on ? 0 : 60)));
+                      }}
+                    />
+                    {x.name} · €{x.cents / 100}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+          {quote && (
+            <div className="rounded-lg bg-white border border-line p-3 text-sm">
+              <ul className="space-y-0.5">
+                {quote.lines.map((l) => (
+                  <li key={l.label} className="flex justify-between gap-3">
+                    <span>{l.label}</span>
+                    <Money cents={l.cents} />
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-2 pt-2 border-t border-line flex items-center justify-between gap-3">
+                <span className="font-semibold">
+                  Πρόταση τιμής: <Money cents={quote.totalCents} />
+                </span>
+                <button type="button" className="btn-secondary btn-sm" onClick={() => setPrice(centsToInput(quote.totalCents))}>
+                  Χρήση ως τιμή
+                </button>
+              </div>
+              {isMonToThu(date) && <div className="mt-1 text-xs text-ink-3">Αν η ημέρα είναι αργία, αφαίρεσε την έκπτωση Δευτέρας–Πέμπτης.</div>}
+            </div>
+          )}
+        </fieldset>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <Field label="Άτομα">
-          <input name="guests" type="number" min={0} inputMode="numeric" className="input num" defaultValue={initial?.guests ?? 0} />
-        </Field>
+        {!isParty && (
+          <Field label={type === "appointment" ? "Άτομα στο ραντεβού" : "Καλεσμένοι"}>
+            <input name="guests" type="number" min={0} inputMode="numeric" className="input num" defaultValue={initial?.guests ?? (type === "appointment" ? 2 : 0)} />
+          </Field>
+        )}
         <Field label="Χώρος">
           <select name="areaId" className="input" defaultValue={initial?.areaId ?? ""} onChange={clearConflicts}>
             <option value="">— όλος ο χώρος —</option>
@@ -185,7 +353,7 @@ export function EventForm({
       </Field>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:items-end">
         <Field label="Τιμή (€)">
-          <input name="price" inputMode="decimal" className="input num" defaultValue={initial ? centsToInput(initial.priceCents) : ""} placeholder="250,00" />
+          <input name="price" inputMode="decimal" className="input num" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="250,00" />
         </Field>
         <Field label="Προκαταβολή (€)">
           <input name="deposit" inputMode="decimal" className="input num" defaultValue={initial ? centsToInput(initial.depositCents) : ""} placeholder="50,00" />
@@ -194,7 +362,7 @@ export function EventForm({
           <Toggle name="depositPaid" defaultChecked={initial?.depositPaid ?? false} label="Πληρώθηκε η προκαταβολή" />
         </div>
       </div>
-      <Field label="Μενού / πακέτο">
+      <Field label={isParty ? "Σημειώσεις μενού (αλλεργίες κ.λπ.)" : type === "appointment" ? "Θέμα ραντεβού" : "Μενού / πακέτο"}>
         <textarea name="menuNotes" className="input" rows={2} defaultValue={initial?.menuNotes ?? ""} placeholder="π.χ. παιδικό μενού, τούρτα, ποτά" />
       </Field>
       <Field label="Σημειώσεις">

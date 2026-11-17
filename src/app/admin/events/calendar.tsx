@@ -6,7 +6,8 @@ import { PageHeader, Section, useActionRunner } from "@/components/admin/common"
 import { fmtIsoDate } from "@/components/admin/format";
 import { LiveRefresh } from "@/components/live";
 import { WEEKDAYS_SHORT, longDateLabel, monthLabel, shiftMonth, weekdayMon, type MonthGrid } from "@/components/admin/events/dates";
-import { CANCELLED_CHIP, EVENT_STATUS_TONE, EVENT_TYPES, EVENT_TYPE_CHIP, EVENT_TYPE_DOT } from "@/components/admin/events/meta";
+import { CANCELLED_CHIP, EVENT_STATUS_TONE, EVENT_TYPE_CHIP, EVENT_TYPE_DOT, SCOPES, type CalendarScope } from "@/components/admin/events/meta";
+import { packageByKey } from "@/components/admin/events/party";
 import type { AreaOption, EventRow } from "@/components/admin/events/types";
 import type { EventStatus, EventType } from "@/db/schema";
 import { deleteEventAction, setEventStatusAction } from "./actions";
@@ -17,6 +18,7 @@ type ModalState = { mode: "new"; date: string } | { mode: "edit"; event: EventRo
 const MAX_CHIPS = 3;
 
 export function EventsCalendar({
+  scope,
   month,
   today,
   grid,
@@ -26,6 +28,7 @@ export function EventsCalendar({
   typeLabels,
   statusLabels,
 }: {
+  scope: CalendarScope;
   month: string;
   today: string;
   grid: MonthGrid;
@@ -68,6 +71,8 @@ export function EventsCalendar({
     run(() => deleteEventAction(ev.id), { success: "Η εκδήλωση διαγράφηκε" });
   };
 
+  const conf = SCOPES[scope];
+  const base = conf.path;
   const inMonthCount = events.filter((e) => e.date.startsWith(month) && e.status !== "cancelled").length;
   const prevMonth = shiftMonth(month, -1);
   const nextMonth = shiftMonth(month, 1);
@@ -85,35 +90,35 @@ export function EventsCalendar({
       }`}</style>
 
       <PageHeader
-        title="Εκδηλώσεις"
-        subtitle={`${monthLabel(month)} · ${inMonthCount} ${inMonthCount === 1 ? "εκδήλωση" : "εκδηλώσεις"} · γάμοι, βαφτίσεις, πάρτι, σχολικές εκδρομές, εταιρικά`}
+        title={conf.title}
+        subtitle={`${monthLabel(month)} · ${inMonthCount} ${scope === "parties" ? (inMonthCount === 1 ? "πάρτι" : "πάρτι") : inMonthCount === 1 ? "εγγραφή" : "εγγραφές"} · ${conf.subtitle}`}
         actions={
           <>
             <button className="btn-secondary btn-sm" onClick={() => window.print()}>
               Εκτύπωση μήνα
             </button>
             <button className="btn-primary btn-sm" onClick={() => openNew(today.startsWith(month) ? today : `${month}-01`)}>
-              + Νέα εκδήλωση
+              {conf.newLabel}
             </button>
           </>
         }
       />
 
       <div className="card p-2 flex flex-wrap items-center gap-2 print:hidden">
-        <Link href={{ pathname: "/admin/events", query: { m: prevMonth } }} className="btn-secondary btn-sm num" aria-label="Προηγούμενος μήνας" title={monthLabel(prevMonth)}>
+        <Link href={{ pathname: base, query: { m: prevMonth } }} className="btn-secondary btn-sm num" aria-label="Προηγούμενος μήνας" title={monthLabel(prevMonth)}>
           ‹
         </Link>
-        <Link href={{ pathname: "/admin/events", query: { m: nextMonth } }} className="btn-secondary btn-sm num" aria-label="Επόμενος μήνας" title={monthLabel(nextMonth)}>
+        <Link href={{ pathname: base, query: { m: nextMonth } }} className="btn-secondary btn-sm num" aria-label="Επόμενος μήνας" title={monthLabel(nextMonth)}>
           ›
         </Link>
-        <Link href={{ pathname: "/admin/events", query: { m: today.slice(0, 7) } }} className="btn-ghost btn-sm">
+        <Link href={{ pathname: base, query: { m: today.slice(0, 7) } }} className="btn-ghost btn-sm">
           Σήμερα
         </Link>
         <div className="font-semibold text-lg ml-1" data-testid="month-label">
           {monthLabel(month)}
         </div>
         <ul className="ml-auto flex flex-wrap gap-x-3 gap-y-1 text-xs text-ink-2" aria-label="Υπόμνημα">
-          {EVENT_TYPES.map((t) => (
+          {conf.types.map((t) => (
             <li key={t} className="inline-flex items-center gap-1">
               <span className={`inline-block h-2.5 w-2.5 rounded-full ${EVENT_TYPE_DOT[t]}`} />
               {typeLabels[t]}
@@ -184,6 +189,7 @@ export function EventsCalendar({
                             }`}
                           >
                             <span className="num">{ev.startTime}</span> {ev.title}
+                            {ev.type === "party" && ev.party?.kids ? <span className="opacity-70"> · {ev.party.kids}π</span> : null}
                           </button>
                         );
                       })}
@@ -232,7 +238,23 @@ export function EventsCalendar({
                     {ev.depositPaid && <Badge tone="ok">Προκαταβολή ✓</Badge>}
                   </div>
                   <div className="text-xs text-ink-3 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
-                    <span className="num">{ev.guests} άτομα</span>
+                    {ev.type === "party" && ev.party ? (
+                      <>
+                        {ev.party.childName && (
+                          <span>
+                            🎂 {ev.party.childName}
+                            {ev.party.childAge ? <span className="num"> ({ev.party.childAge} ετών)</span> : null}
+                          </span>
+                        )}
+                        <span className="num">
+                          {ev.party.kids ?? 0} παιδιά · {ev.party.adults ?? 0} ενήλικες
+                        </span>
+                        {packageByKey(ev.party.package) && <span>{packageByKey(ev.party.package)!.name}</span>}
+                        {ev.party.cake && <span>Τούρτα: {ev.party.cake}</span>}
+                      </>
+                    ) : (
+                      <span className="num">{ev.guests} άτομα</span>
+                    )}
                     <span>{ev.areaName ?? "όλος ο χώρος"}</span>
                     {(ev.customerName || ev.customerPhone) && (
                       <span>
@@ -278,7 +300,7 @@ export function EventsCalendar({
             ))}
           </ul>
         ) : (
-          <div className="p-4 text-sm text-ink-3">Δεν υπάρχουν προγραμματισμένες εκδηλώσεις τις επόμενες 30 ημέρες.</div>
+          <div className="p-4 text-sm text-ink-3">Δεν υπάρχει τίποτα προγραμματισμένο τις επόμενες 30 ημέρες.</div>
         )}
       </Section>
 
@@ -291,6 +313,8 @@ export function EventsCalendar({
         areas={areas}
         typeLabels={typeLabels}
         statusLabels={statusLabels}
+        allowedTypes={conf.types}
+        defaultType={conf.newType}
         runner={runner}
         onSaved={() => setModal(null)}
       />

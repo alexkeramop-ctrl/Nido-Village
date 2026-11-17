@@ -87,3 +87,45 @@ body {
 .num {
   font-variant-numeric: tabular-nums;
 }
+
+/* ───────── Glass (σκούρο πράσινο φόντο με θολά «παράθυρα») ───────── */
+.glass-page {
+  @apply relative isolate overflow-hidden rounded-3xl p-4 sm:p-6 text-white;
+  background:
+    radial-gradient(60% 50% at 10% 0%, rgba(157, 189, 139, 0.45), transparent 60%),
+    radial-gradient(50% 45% at 95% 10%, rgba(176, 138, 62, 0.4), transparent 60%),
+    radial-gradient(60% 60% at 70% 100%, rgba(56, 120, 110, 0.45), transparent 60%),
+    linear-gradient(160deg, #0f1a12 0%, #1b2d1f 45%, #12201a 100%);
+}
+.glass-page::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+  background-size: 22px 22px;
+  mask-image: linear-gradient(180deg, black, transparent 70%);
+}
+.glass {
+  @apply rounded-2xl border border-white/15 bg-white/[0.07] backdrop-blur-xl;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+.glass-hi {
+  @apply rounded-2xl border border-white/25 bg-white/[0.14] backdrop-blur-xl;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+.glass-btn {
+  @apply inline-flex items-center justify-center gap-1.5 rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/20 active:scale-[0.98] disabled:opacity-40;
+}
+.glass-btn-solid {
+  @apply inline-flex items-center justify-center gap-1.5 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-brand-2 shadow-lg transition hover:bg-brand-soft active:scale-[0.98];
+}
+.glass-label {
+  @apply text-[11px] font-semibold uppercase tracking-[0.14em] text-white/55;
+}
+.glass-table th {
+  @apply text-left text-[11px] uppercase tracking-wider text-white/50 font-semibold px-3 py-2 border-b border-white/10;
+}
+.glass-table td {
+  @apply px-3 py-2.5 border-b border-white/[0.07] align-middle;
+}

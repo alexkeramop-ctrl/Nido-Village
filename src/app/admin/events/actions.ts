@@ -10,6 +10,8 @@ const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 function revalidate() {
   revalidatePath("/admin/events");
+  revalidatePath("/admin/ceremonies");
+  revalidatePath("/admin/parties");
   revalidatePath("/admin");
 }
 
@@ -43,6 +45,7 @@ export async function saveEventAction(input: EventFormInput) {
         depositPaid: input.depositPaid,
         menuNotes: input.menuNotes,
         notes: input.notes,
+        party: input.party,
       },
       me.id,
     );

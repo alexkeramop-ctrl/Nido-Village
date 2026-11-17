@@ -516,7 +516,22 @@ export const goodsReceiptLines = pgTable("goods_receipt_lines", {
 /* Εκδηλώσεις (γάμοι, βαφτίσεις, πάρτι, σχολικές εκδρομές)              */
 /* ------------------------------------------------------------------ */
 
-export type EventType = "wedding" | "christening" | "party" | "school_trip" | "corporate" | "other";
+export type EventType = "wedding" | "christening" | "appointment" | "party" | "school_trip" | "corporate" | "other";
+
+/** Στοιχεία παιδικού πάρτι (μόνο για type = "party"). */
+export type PartyDetails = {
+  childName?: string;
+  childAge?: number | null;
+  kids?: number;
+  adults?: number;
+  /** Κλειδί πακέτου από τον τιμοκατάλογο (π.χ. "bounce"). */
+  package?: string;
+  /** Μενού ενηλίκων (π.χ. "classic", "grill", "buffet", "none"). */
+  adultMenu?: string;
+  extras?: string[];
+  theme?: string;
+  cake?: string;
+};
 export type EventStatus = "inquiry" | "confirmed" | "cancelled" | "done";
 
 export const events = pgTable(
@@ -540,6 +555,8 @@ export const events = pgTable(
     depositPaid: boolean().notNull().default(false),
     menuNotes: text(),
     notes: text(),
+    /** Στοιχεία παιδικού πάρτι (παιδί, ηλικία, πακέτο, τούρτα…). */
+    party: jsonb().$type<PartyDetails>(),
     createdBy: integer().references(() => employees.id),
     createdAt: ts().notNull().defaultNow(),
     updatedAt: ts().notNull().defaultNow(),
@@ -661,4 +678,42 @@ export const goodsReceiptLinesRelations = relations(goodsReceiptLines, ({ one })
 }));
 export const printJobsRelations = relations(printJobs, ({ one }) => ({
   station: one(printStations, { fields: [printJobs.stationId], references: [printStations.id] }),
+}));
+
+/* ------------------------------------------------------------------ */
+/* Έσοδα – έξοδα                                                       */
+/* ------------------------------------------------------------------ */
+
+export type FinanceKind = "income" | "expense";
+export type FinanceMethod = "cash" | "card" | "bank" | "other";
+
+/**
+ * Χειροκίνητες κινήσεις εσόδων/εξόδων (ενοίκιο, ρεύμα, μισθοί, προκαταβολές με μεταφορά…).
+ * Οι πληρωμές του ταμείου και οι παραλαβές αποθήκης μετριούνται αυτόματα και ΔΕΝ περνιούνται εδώ.
+ */
+export const financeEntries = pgTable(
+  "finance_entries",
+  {
+    id: serial().primaryKey(),
+    kind: text().$type<FinanceKind>().notNull(),
+    /** Ημερομηνία παραστατικού/πληρωμής (YYYY-MM-DD, ώρα Αθήνας). */
+    date: text().notNull(),
+    category: text().notNull(),
+    description: text().notNull().default(""),
+    /** Συνολικό ποσό με ΦΠΑ, σε λεπτά. */
+    amountCents: integer().notNull(),
+    vatCents: integer().notNull().default(0),
+    method: text().$type<FinanceMethod>().notNull().default("bank"),
+    supplierId: integer().references(() => suppliers.id),
+    eventId: integer().references(() => events.id),
+    docNumber: text(),
+    createdBy: integer().references(() => employees.id),
+    createdAt: ts().notNull().defaultNow(),
+  },
+  (t) => [index("finance_entries_date_idx").on(t.date)],
+);
+
+export const financeEntriesRelations = relations(financeEntries, ({ one }) => ({
+  supplier: one(suppliers, { fields: [financeEntries.supplierId], references: [suppliers.id] }),
+  event: one(events, { fields: [financeEntries.eventId], references: [events.id] }),
 }));
