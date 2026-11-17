@@ -32,6 +32,15 @@ export function compareValues(a: number | string, b: number | string): number {
   return String(a).localeCompare(String(b), "el", { numeric: true, sensitivity: "base" });
 }
 
+/** Κείμενο κελιού για ταξινόμηση: data-sort αν υπάρχει, αλλιώς η πρώτη ορατή γραμμή (όχι οι υπότιτλοι). */
+function cellText(cell: HTMLTableCellElement | undefined): string {
+  if (!cell) return "";
+  const explicit = cell.getAttribute("data-sort");
+  if (explicit != null) return explicit;
+  const text = cell.innerText ?? cell.textContent ?? "";
+  return text.split("\n").map((l) => l.trim()).find(Boolean) ?? "";
+}
+
 /** Ενεργοποιεί την ταξινόμηση σε έναν πίνακα· επιστρέφει συνάρτηση καθαρισμού. */
 export function attachSorting(table: HTMLTableElement): () => void {
   let col = -1;
@@ -60,7 +69,7 @@ export function attachSorting(table: HTMLTableElement): () => void {
         if (r.hasAttribute("data-sort-follow") && groups.length) groups[groups.length - 1].push(r);
         else groups.push([r]);
       }
-      const keyed = groups.map((g, i) => ({ g, i, v: sortValue(g[0].cells[col]?.textContent ?? "") }));
+      const keyed = groups.map((g, i) => ({ g, i, v: sortValue(cellText(g[0].cells[col])) }));
       keyed.sort((a, b) => compareValues(a.v, b.v) * (dir === "asc" ? 1 : -1) || a.i - b.i);
       const frag = document.createDocumentFragment();
       for (const k of keyed) for (const r of k.g) frag.appendChild(r);
