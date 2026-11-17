@@ -6,7 +6,7 @@
  */
 import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import type { TableShape } from "@/db/schema";
-import { MIN_ROOM_SIZE, PLAN_ASPECT, clampRoomRect, roomColor, type PlanRoom } from "@/lib/floor-plan";
+import { MIN_ROOM_SIZE, PLAN_ASPECT, clampRoomRect, fixtureOf, roomColor, type PlanRoom } from "@/lib/floor-plan";
 
 export type FloorMapTone = "free" | "open" | "billed";
 export type FloorMapImage = { url: string; width: number | null; height: number | null } | null;
@@ -311,7 +311,20 @@ export function FloorMap({
         const c = roomColor(r.color);
         const selected = canEditRooms && r.id === selectedRoomId;
         const box = { left: `${r.x / 10}%`, top: `${r.y / 10}%`, width: `${r.w / 10}%`, height: `${r.h / 10}%`, backgroundColor: c.fill, borderColor: c.stroke };
-        const label = (
+        const fixture = fixtureOf(r.kind);
+        // Έτοιμο στοιχείο (μπαρ, τζάκι…): εικονίδιο και όνομα στο κέντρο· σε φαρδύ-χαμηλό σχήμα μπαίνουν δίπλα δίπλα.
+        const sideBySide = r.w * PLAN_ASPECT.w > r.h * PLAN_ASPECT.h * 2.2;
+        const label = fixture ? (
+          <span
+            className={`pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden px-[0.4em] text-center font-semibold leading-tight ${sideBySide ? "flex-row gap-[0.4em]" : "flex-col gap-[0.1em]"}`}
+            style={{ fontSize: roomLabelSize, color: c.stroke, filter: "brightness(0.62)" }}
+          >
+            <span aria-hidden className="shrink-0 leading-none" style={{ fontSize: "1.5em", filter: "brightness(1.6)" }}>
+              {fixture.icon}
+            </span>
+            <span className="max-w-full truncate">{r.name}</span>
+          </span>
+        ) : (
           <span
             className="pointer-events-none absolute left-[0.5em] top-[0.3em] right-[0.5em] truncate font-semibold leading-tight"
             style={{ fontSize: roomLabelSize, color: c.stroke, filter: "brightness(0.62)" }}
@@ -332,7 +345,7 @@ export function FloorMap({
               tabIndex={0}
               data-room-id={r.id}
               data-room-name={r.name}
-              aria-label={`Δωμάτιο ${r.name}`}
+              aria-label={`Στοιχείο ${r.name}`}
               aria-pressed={selected}
               onPointerDown={onRoomPointerDown(r, "move")}
               onPointerMove={onRoomPointerMove}

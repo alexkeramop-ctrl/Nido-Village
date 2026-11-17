@@ -53,8 +53,8 @@ describe("sanitizePlan", () => {
     expect(rooms[0].name.startsWith("Πολύ μεγάλο ")).toBe(true);
     expect(rooms[0].color).toBe(ROOM_COLORS[0].key);
     expect(Object.keys(rooms[0]).sort()).toEqual(["color", "h", "id", "name", "w", "x", "y"]);
-    expect(rooms[1]).toMatchObject({ id: "same", name: "Δωμάτιο", color: "lavender" });
-    expect(rooms[2].name).toBe("Δωμάτιο");
+    expect(rooms[1]).toMatchObject({ id: "same", name: "Ζώνη", color: "lavender" });
+    expect(rooms[2].name).toBe("Ζώνη");
     expect(new Set(rooms.map((r) => r.id)).size).toBe(4);
     expect(rooms.every((r) => /^[A-Za-z0-9_-]{1,40}$/.test(r.id))).toBe(true);
   });
@@ -95,5 +95,20 @@ describe("βοηθητικά κάτοψης", () => {
     expect(samePlan(a, a.map((r) => ({ ...r })))).toBe(true);
     expect(samePlan(a, a.slice(0, 2))).toBe(false);
     expect(samePlan(a, a.map((r, i) => (i ? r : { ...r, w: r.w + 1 })))).toBe(false);
+  });
+
+  it("έτοιμα στοιχεία χώρου: κρατά μόνο γνωστό είδος, δίνει προεπιλεγμένο μέγεθος και αρίθμηση", async () => {
+    const { nextFixture, samePlan, sanitizePlan: clean } = await import("@/lib/floor-plan");
+    const bar = nextFixture([], "bar");
+    expect(bar).toMatchObject({ name: "Μπαρ", kind: "bar", w: 420, h: 120 });
+    expect(nextFixture([bar], "bar").name).toBe("Μπαρ 2");
+    const fire = nextFixture([bar], "fireplace");
+    expect(fire).toMatchObject({ name: "Τζάκι", kind: "fireplace" });
+    // Το νέο στοιχείο δεν πέφτει πάνω στο προηγούμενο.
+    expect(fire.x >= bar.x + bar.w || fire.x + fire.w <= bar.x || fire.y >= bar.y + bar.h || fire.y + fire.h <= bar.y).toBe(true);
+    const out = clean({ rooms: [bar, { ...bar, id: "x1", kind: "<script>" }, { ...bar, id: "x2", kind: "kitchen" }] }).rooms;
+    expect(out.map((r) => r.kind)).toEqual(["bar", undefined, "kitchen"]);
+    expect(samePlan([bar], [{ ...bar, kind: "kitchen" }])).toBe(false);
+    expect(samePlan([bar], [{ ...bar }])).toBe(true);
   });
 });

@@ -4,7 +4,7 @@ import { Badge, Field } from "@/components/ui";
 import { FormModal, InfoBox, PageHeader, Section, formValues, useActionRunner } from "@/components/admin/common";
 import { ZoomableFloorMap, isPlaced, type FloorMapImage, type FloorMapTable, type RoomRect } from "@/components/floor-map";
 import type { TableShape } from "@/db/schema";
-import { DEFAULT_ROOM_COLOR, MAX_ROOMS, MAX_ROOM_NAME, ROOM_COLORS, newRoomId, nextRoom, samePlan, type PlanRoom } from "@/lib/floor-plan";
+import { DEFAULT_ROOM_COLOR, FIXTURES, MAX_ROOMS, MAX_ROOM_NAME, ROOM_COLORS, fixtureOf, newRoomId, nextFixture, nextRoom, samePlan, type FixtureKind, type PlanRoom } from "@/lib/floor-plan";
 import { DEFAULT_ROOM_COLS, DEFAULT_ROOM_TABLES, MAX_ROOM_COLS, MAX_ROOM_TABLES, ROOM_PRESET, defaultPrefix } from "@/lib/floor-rooms";
 import { addTableAction, autoLayoutAction, createRoomAction, createRoomPresetAction, removeAreaMapAction, removeRoomAction, removeTableAction, saveFloorLayoutAction, uploadAreaMapAction } from "./actions";
 
@@ -22,7 +22,7 @@ const SHAPES: { value: TableShape; label: string }[] = [
 ];
 const MAX_UPLOAD = 3 * 1024 * 1024;
 const NUDGE = 5;
-const HELP = "Κάθε δωμάτιο έχει τη δική του κάτοψη. Σύρε τα τραπέζια για να αλλάξεις τη διάταξη, πρόσθεσε ή αφαίρεσε τραπέζια και πάτα «Αποθήκευση».";
+const HELP = "Κάθε δωμάτιο έχει τη δική του κάτοψη. Σύρε τα τραπέζια για να αλλάξεις τη διάταξη, πρόσθεσε τραπέζια και στοιχεία χώρου (μπαρ, τζάκι, κουζίνα) και πάτα «Αποθήκευση».";
 const PRESET_LABEL = ROOM_PRESET.map((r) => r.name).join(", ");
 
 const clamp = (v: number) => Math.max(0, Math.min(1000, Math.round(v)));
@@ -147,7 +147,7 @@ export function FloorEditor({ areas }: { areas: EditorArea[] }) {
   };
   const patchRoom = (id: string, patch: Partial<PlanRoom>) => setRooms((cur) => cur.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   const addRoom = (rect?: RoomRect) => {
-    if (rooms.length >= MAX_ROOMS) return toast(`Έως ${MAX_ROOMS} ζώνες ανά δωμάτιο`, "danger");
+    if (rooms.length >= MAX_ROOMS) return toast(`Έως ${MAX_ROOMS} στοιχεία ανά δωμάτιο`, "danger");
     const room = { ...nextRoom(rooms), ...rect, id: newRoomId() };
     setRooms((cur) => [...cur, room]);
     selectRoom(room.id);
@@ -215,6 +215,14 @@ export function FloorEditor({ areas }: { areas: EditorArea[] }) {
         toast(mode === "archived" ? `Το ${t.name} κρύφτηκε (έχει ιστορικό πωλήσεων, οι αναφορές μένουν σωστές)` : `Το τραπέζι ${t.name} αφαιρέθηκε`);
       },
     });
+  };
+  /** Έτοιμο στοιχείο χώρου (μπαρ, τζάκι, κουζίνα…) ή γενική ζώνη με kind = "". */
+  const addFixture = (kind: FixtureKind | "") => {
+    if (!kind) return addRoom();
+    if (rooms.length >= MAX_ROOMS) return toast(`Έως ${MAX_ROOMS} στοιχεία ανά δωμάτιο`, "danger");
+    const item = nextFixture(rooms, kind);
+    setRooms((cur) => [...cur, item]);
+    selectRoom(item.id);
   };
   const deleteRoom = (id: string) => {
     setRooms((cur) => cur.filter((r) => r.id !== id));
@@ -414,9 +422,23 @@ export function FloorEditor({ areas }: { areas: EditorArea[] }) {
                     </>
                   )}
                   {planMode && (
-                    <button type="button" className="btn-ghost btn-sm" onClick={() => addRoom()} disabled={pending || rooms.length >= MAX_ROOMS} title="Προαιρετικά: σχεδίασε μια ζώνη μέσα στο δωμάτιο (π.χ. μπαρ, πίστα)">
-                      + Ζώνη
-                    </button>
+                    <select
+                      aria-label="Προσθήκη στοιχείου χώρου"
+                      className="btn-secondary btn-sm cursor-pointer"
+                      value=""
+                      disabled={pending || rooms.length >= MAX_ROOMS}
+                      onChange={(e) => addFixture(e.target.value === "zone" ? "" : (e.target.value as FixtureKind))}
+                    >
+                      <option value="" disabled>
+                        + Στοιχείο χώρου…
+                      </option>
+                      {FIXTURES.map((f) => (
+                        <option key={f.key} value={f.key}>
+                          {f.icon} {f.label}
+                        </option>
+                      ))}
+                      <option value="zone">▭ Άλλη ζώνη (ελεύθερο όνομα)</option>
+                    </select>
                   )}
                   <button type="button" className="btn-ghost btn-sm text-danger" onClick={removeRoom} disabled={pending} aria-label={`Διαγραφή δωματίου ${area.name}`}>
                     Διαγραφή δωματίου
@@ -455,13 +477,34 @@ export function FloorEditor({ areas }: { areas: EditorArea[] }) {
 
             <aside className="space-y-4">
               {planMode && (
-                <Section title={`Ζώνες στο σχέδιο (${rooms.length})`}>
+                <Section title={`Στοιχεία χώρου (${rooms.length})`}>
                   {selectedRoom ? (
                     <div className="space-y-3">
-                      <Field label="Όνομα ζώνης">
+                      <Field label="Είδος">
+                        <select
+                          className="input"
+                          aria-label="Είδος στοιχείου"
+                          value={selectedRoom.kind ?? ""}
+                          onChange={(e) => {
+                            const f = fixtureOf(e.target.value);
+                            const old = fixtureOf(selectedRoom.kind);
+                            // Αν το όνομα ήταν το προεπιλεγμένο του παλιού είδους, ακολουθεί το νέο.
+                            const keepName = selectedRoom.name && selectedRoom.name !== old?.label;
+                            patchRoom(selectedRoom.id, { kind: f?.key, ...(f && !keepName ? { name: f.label } : {}) });
+                          }}
+                        >
+                          <option value="">▭ Ζώνη (χωρίς εικονίδιο)</option>
+                          {FIXTURES.map((f) => (
+                            <option key={f.key} value={f.key}>
+                              {f.icon} {f.label}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                      <Field label="Όνομα">
                         <input
                           className="input"
-                          aria-label="Όνομα ζώνης"
+                          aria-label="Όνομα στοιχείου"
                           value={selectedRoom.name}
                           maxLength={MAX_ROOM_NAME}
                           onChange={(e) => patchRoom(selectedRoom.id, { name: e.target.value })}
@@ -469,7 +512,7 @@ export function FloorEditor({ areas }: { areas: EditorArea[] }) {
                       </Field>
                       <div>
                         <span className="label">Χρώμα</span>
-                        <div className="flex flex-wrap gap-2" role="group" aria-label="Χρώμα ζώνης">
+                        <div className="flex flex-wrap gap-2" role="group" aria-label="Χρώμα στοιχείου">
                           {ROOM_COLORS.map((c) => {
                             const on = (selectedRoom.color ?? DEFAULT_ROOM_COLOR) === c.key;
                             return (
@@ -488,19 +531,31 @@ export function FloorEditor({ areas }: { areas: EditorArea[] }) {
                         </div>
                       </div>
                       <div className="text-xs text-ink-3 num">
-                        Μέγεθος {(selectedRoom.w / 10).toFixed(0)}% × {(selectedRoom.h / 10).toFixed(0)}% · σύρε τη ζώνη για μετακίνηση και τη γωνία κάτω δεξιά για μέγεθος.
+                        Μέγεθος {(selectedRoom.w / 10).toFixed(0)}% × {(selectedRoom.h / 10).toFixed(0)}% · σύρε το για μετακίνηση και τη γωνία κάτω δεξιά για μέγεθος.
                       </div>
-                      <button type="button" className="btn-secondary btn-sm w-full text-danger" onClick={() => deleteRoom(selectedRoom.id)} aria-label={`Διαγραφή ζώνης ${selectedRoom.name}`}>
-                        Διαγραφή ζώνης
+                      <button type="button" className="btn-secondary btn-sm w-full text-danger" onClick={() => deleteRoom(selectedRoom.id)} aria-label={`Διαγραφή στοιχείου ${selectedRoom.name}`}>
+                        Διαγραφή στοιχείου
                       </button>
                     </div>
                   ) : (
-                    <p className="text-sm text-ink-3">
-                      {rooms.length ? "Πάτησε μια ζώνη για να αλλάξεις όνομα, χρώμα ή να τη διαγράψεις." : "Προαιρετικά: με το «+ Ζώνη» σχεδιάζεις μια περιοχή μέσα στο δωμάτιο (π.χ. μπαρ, πίστα)."}
-                    </p>
+                    <>
+                      <p className="text-sm text-ink-3">
+                        {rooms.length
+                          ? "Πάτησε ένα στοιχείο στο σχέδιο για να αλλάξεις όνομα, χρώμα, είδος ή να το διαγράψεις."
+                          : "Δείξε πού είναι το μπαρ, το τζάκι, η κουζίνα ή η είσοδος, για να φαίνεται η διάταξη του δωματίου."}
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Προσθήκη στοιχείου">
+                        {FIXTURES.map((f) => (
+                          <button key={f.key} type="button" className="btn-secondary btn-sm" onClick={() => addFixture(f.key)} disabled={pending || rooms.length >= MAX_ROOMS} aria-label={`Προσθήκη: ${f.label}`}>
+                            <span aria-hidden>{f.icon}</span>
+                            {f.label}
+                          </button>
+                        ))}
+                      </div>
+                    </>
                   )}
                   {rooms.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-line" role="group" aria-label="Λίστα ζωνών">
+                    <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-line" role="group" aria-label="Λίστα στοιχείων">
                       {rooms.map((r) => (
                         <button
                           key={r.id}
@@ -509,6 +564,7 @@ export function FloorEditor({ areas }: { areas: EditorArea[] }) {
                           onClick={() => selectRoom(r.id)}
                           className={`btn-secondary btn-sm max-w-full ${r.id === selectedRoomId ? "ring-2 ring-brand" : ""}`}
                         >
+                          {fixtureOf(r.kind) && <span aria-hidden>{fixtureOf(r.kind)!.icon}</span>}
                           <span className="truncate">{r.name || "Χωρίς όνομα"}</span>
                         </button>
                       ))}

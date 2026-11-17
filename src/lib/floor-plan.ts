@@ -3,7 +3,11 @@
  * Καθαρές συναρτήσεις, κοινές για server (έλεγχος/καθαρισμός) και client (σχεδίαση).
  */
 
-export type PlanRoom = { id: string; name: string; x: number; y: number; w: number; h: number; color?: string };
+/**
+ * Στοιχείο του σχεδίου: γενική ζώνη ή έτοιμο στοιχείο χώρου (μπαρ, τζάκι, κουζίνα…) που σχεδιάζεται με το εικονίδιό του.
+ * Το `kind` λείπει στις γενικές ζώνες (και σε ό,τι αποθηκεύτηκε πριν υπάρξουν τα στοιχεία).
+ */
+export type PlanRoom = { id: string; name: string; x: number; y: number; w: number; h: number; color?: string; kind?: FixtureKind };
 export type FloorPlan = { rooms: PlanRoom[] };
 
 /** Λόγος πλευρών του καμβά της κάτοψης (πλάτος / ύψος) όταν δεν υπάρχει φωτογραφία. */
@@ -12,7 +16,25 @@ export const MAX_ROOMS = 30;
 /** Ελάχιστη πλευρά δωματίου: αρκετά μεγάλη ώστε να πιάνεται και να σύρεται με το δάχτυλο σε κινητό. */
 export const MIN_ROOM_SIZE = 100;
 export const MAX_ROOM_NAME = 40;
-export const DEFAULT_ROOM_NAME = "Δωμάτιο";
+export const DEFAULT_ROOM_NAME = "Ζώνη";
+
+/** Έτοιμα στοιχεία χώρου: αποθηκεύεται μόνο το κλειδί. Μέγεθος σε χιλιοστά του καμβά. */
+export const FIXTURES = [
+  { key: "bar", label: "Μπαρ", icon: "🍸", w: 420, h: 120, color: "sand" },
+  { key: "kitchen", label: "Κουζίνα", icon: "🍳", w: 300, h: 200, color: "stone" },
+  { key: "fireplace", label: "Τζάκι", icon: "🔥", w: 150, h: 110, color: "rose" },
+  { key: "entrance", label: "Είσοδος", icon: "🚪", w: 170, h: 100, color: "sage" },
+  { key: "till", label: "Ταμείο", icon: "💶", w: 190, h: 110, color: "sand" },
+  { key: "buffet", label: "Μπουφές", icon: "🍽️", w: 360, h: 110, color: "lavender" },
+  { key: "stage", label: "Πίστα / Σκηνή", icon: "🎵", w: 300, h: 220, color: "lavender" },
+  { key: "play", label: "Παιχνίδια", icon: "🎈", w: 300, h: 240, color: "sky" },
+  { key: "wc", label: "WC", icon: "🚻", w: 160, h: 140, color: "sky" },
+] as const;
+export type FixtureKind = (typeof FIXTURES)[number]["key"];
+
+export function fixtureOf(kind: string | undefined) {
+  return FIXTURES.find((f) => f.key === kind) ?? null;
+}
 
 /** Σταθερή παλέτα: αποθηκεύεται το κλειδί, όχι ελεύθερο CSS. */
 export const ROOM_COLORS = [
@@ -79,7 +101,8 @@ export function sanitizePlan(input: unknown): FloorPlan {
         .trim()
         .slice(0, MAX_ROOM_NAME) || DEFAULT_ROOM_NAME;
     const color = roomColor(typeof r.color === "string" ? r.color : undefined).key;
-    rooms.push({ id, name, ...clampRoomRect({ x, y, w, h }), color });
+    const kind = fixtureOf(typeof r.kind === "string" ? r.kind : undefined)?.key;
+    rooms.push({ id, name, ...clampRoomRect({ x, y, w, h }), color, ...(kind ? { kind } : {}) });
   }
   return { rooms };
 }
@@ -102,12 +125,38 @@ export function nextRoom(existing: PlanRoom[]): PlanRoom {
   return { id: newRoomId(), name: `${DEFAULT_ROOM_NAME} ${n + 1}`, ...clampRoomRect({ x: 340 + off, y: 340 + off, w: 320, h: 260 }), color };
 }
 
+/** Πρώτη θέση (από πάνω αριστερά, σειρά-σειρά) όπου ένα ορθογώνιο w×h δεν πέφτει πάνω σε άλλο στοιχείο του σχεδίου. */
+export function freeRect(existing: { x: number; y: number; w: number; h: number }[], w: number, h: number) {
+  const size = clampRoomRect({ x: 0, y: 0, w, h });
+  const gap = 20;
+  for (let y = 30; y + size.h <= 1000; y += 50) {
+    for (let x = 30; x + size.w <= 1000; x += 50) {
+      const hit = existing.some((r) => x < r.x + r.w + gap && x + size.w + gap > r.x && y < r.y + r.h + gap && y + size.h + gap > r.y);
+      if (!hit) return { x, y, w: size.w, h: size.h };
+    }
+  }
+  return clampRoomRect({ x: 60 + (existing.length % 6) * 40, y: 60 + (existing.length % 6) * 40, w, h });
+}
+
+/** Νέο έτοιμο στοιχείο (μπαρ, τζάκι…): προεπιλεγμένο μέγεθος και χρώμα, όνομα με αρίθμηση αν υπάρχει ήδη ίδιο. */
+export function nextFixture(existing: PlanRoom[], kind: FixtureKind): PlanRoom {
+  const f = fixtureOf(kind)!;
+  const same = existing.filter((r) => r.kind === kind).length;
+  return {
+    id: newRoomId(),
+    name: same ? `${f.label} ${same + 1}` : f.label,
+    ...freeRect(existing, f.w, f.h),
+    color: f.color,
+    kind,
+  };
+}
+
 export function samePlan(a: PlanRoom[], b: PlanRoom[]) {
   return (
     a.length === b.length &&
     a.every((r, i) => {
       const o = b[i];
-      return r.id === o.id && r.name === o.name && r.x === o.x && r.y === o.y && r.w === o.w && r.h === o.h && (r.color ?? DEFAULT_ROOM_COLOR) === (o.color ?? DEFAULT_ROOM_COLOR);
+      return r.id === o.id && r.name === o.name && r.x === o.x && r.y === o.y && r.w === o.w && r.h === o.h && (r.color ?? DEFAULT_ROOM_COLOR) === (o.color ?? DEFAULT_ROOM_COLOR) && (r.kind ?? "") === (o.kind ?? "");
     })
   );
 }

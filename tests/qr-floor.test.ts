@@ -142,7 +142,7 @@ describe("floor map", () => {
     const after = (await getFloor()).areas.find((a) => a.id === kentro.id)!;
     expect(after.plan).toEqual(saved);
     expect(after.plan!.rooms[0]).toMatchObject({ id: "a", name: "Σάλα μεγάλη", x: 0, y: 20, w: 1000, h: 100, color: "sand" });
-    expect(after.plan!.rooms[1]).toMatchObject({ name: "Δωμάτιο", x: 700, y: 700, w: 300, h: 300, color: "sky" });
+    expect(after.plan!.rooms[1]).toMatchObject({ name: "Ζώνη", x: 700, y: 700, w: 300, h: 300, color: "sky" });
     expect(after.plan!.rooms[1].id).not.toBe("a");
     expect(after.tables.find((t) => t.id === t1.id)).toMatchObject({ posX: 123, posY: 456 });
 
