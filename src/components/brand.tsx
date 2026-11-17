@@ -7,7 +7,7 @@ export function Logo({ className = "", width = 220 }: { className?: string; widt
 }
 
 /** Σήμα (μόνο η καμάρα), για κεφαλίδες. */
-export function Mark({ className = "", height = 32, tone = "light" }: { className?: string; height?: number; tone?: "light" | "color" }) {
+export function Mark({ className = "", height = 32, tone = "color" }: { className?: string; height?: number; tone?: "light" | "color" }) {
   // eslint-disable-next-line @next/next/no-img-element
   return <img src={tone === "light" ? "/brand/mark-light.webp" : "/brand/mark.webp"} alt="" aria-hidden width={Math.round((height * 360) / 387)} height={height} className={className} draggable={false} />;
 }

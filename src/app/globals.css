@@ -1,45 +1,45 @@
 @import "tailwindcss";
 
 @theme {
-  /* Glass θέμα: σκούρο πράσινο φόντο, ημιδιάφανες επιφάνειες, ανοιχτά κείμενα. */
-  --color-surface: rgba(255, 255, 255, 0.04);
-  --color-surface-2: rgba(255, 255, 255, 0.075);
-  --color-surface-3: rgba(255, 255, 255, 0.13);
-  --color-ink: #f3f5ef;
-  --color-ink-2: rgba(243, 245, 239, 0.78);
-  --color-ink-3: rgba(243, 245, 239, 0.55);
-  --color-line: rgba(255, 255, 255, 0.14);
-  --color-brand: #a9c895;
-  --color-brand-2: #d4e7c5;
-  --color-brand-soft: rgba(169, 200, 149, 0.2);
+  /* Ανοιχτόχρωμο glass: απαλό κρεμ/φασκόμηλο φόντο, λευκές ημιδιάφανες επιφάνειες, σκούρα κείμενα. */
+  --color-surface: rgba(255, 255, 255, 0.35);
+  --color-surface-2: rgba(255, 255, 255, 0.6);
+  --color-surface-3: rgba(47, 74, 44, 0.08);
+  --color-ink: #1f2a22;
+  --color-ink-2: #4a5649;
+  --color-ink-3: #7b857a;
+  --color-line: rgba(31, 42, 34, 0.12);
+  --color-brand: #2f4a2c;
+  --color-brand-2: #24391f;
+  --color-brand-soft: rgba(47, 74, 44, 0.12);
   --color-brand-light: #9dbd8b;
-  --color-gold: #e2b670;
-  --color-gold-soft: rgba(226, 182, 112, 0.18);
-  --color-cream: rgba(255, 255, 255, 0.1);
-  --color-warn: #fbc472;
-  --color-warn-soft: rgba(251, 196, 114, 0.16);
-  --color-danger: #ff9b9b;
-  --color-danger-soft: rgba(255, 155, 155, 0.16);
-  --color-ok: #7ee2a8;
-  --color-ok-soft: rgba(126, 226, 168, 0.16);
-  --color-dark: transparent;
-  --color-dark-2: rgba(0, 0, 0, 0.22);
-  --color-dark-3: rgba(255, 255, 255, 0.09);
+  --color-gold: #b08a3e;
+  --color-gold-soft: #f3e8d0;
+  --color-cream: #f8f7f2;
+  --color-warn: #b45309;
+  --color-warn-soft: rgba(251, 191, 104, 0.28);
+  --color-danger: #b91c1c;
+  --color-danger-soft: rgba(239, 68, 68, 0.13);
+  --color-ok: #15803d;
+  --color-ok-soft: rgba(34, 197, 94, 0.15);
+  --color-dark: #121a13;
+  --color-dark-2: #1b261d;
+  --color-dark-3: #2c3a2e;
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
   --radius-card: 18px;
 }
 
 html {
-  background: #0f1a12;
-  color-scheme: dark;
+  background: #eef0e6;
+  color-scheme: light;
 }
 body {
   color: var(--color-ink);
   background:
-    radial-gradient(55% 45% at 8% 0%, rgba(157, 189, 139, 0.38), transparent 60%),
-    radial-gradient(45% 40% at 96% 6%, rgba(176, 138, 62, 0.32), transparent 60%),
-    radial-gradient(60% 55% at 75% 100%, rgba(56, 120, 110, 0.38), transparent 60%),
-    linear-gradient(160deg, #0f1a12 0%, #1b2d1f 45%, #12201a 100%);
+    radial-gradient(55% 45% at 5% 0%, rgba(157, 189, 139, 0.55), transparent 60%),
+    radial-gradient(45% 40% at 98% 4%, rgba(240, 196, 140, 0.5), transparent 60%),
+    radial-gradient(60% 55% at 75% 100%, rgba(120, 180, 170, 0.4), transparent 60%),
+    linear-gradient(160deg, #f4f1e8 0%, #e9efe1 50%, #eef2ea 100%);
   background-attachment: fixed;
 }
 html,
@@ -60,10 +60,10 @@ body {
   @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-base font-semibold transition active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none touch;
 }
 .btn-primary {
-  @apply btn bg-white text-[#1d3020] shadow-lg hover:bg-[#e4ebdc];
+  @apply btn bg-brand text-white shadow-md hover:bg-brand-2;
 }
 .btn-secondary {
-  @apply btn bg-surface-3 text-ink border border-line backdrop-blur-md hover:bg-white/20;
+  @apply btn bg-white/70 text-ink border border-line backdrop-blur-md hover:bg-white;
 }
 .btn-danger {
   @apply btn bg-red-500/85 text-white hover:bg-red-500;
@@ -79,20 +79,17 @@ body {
 }
 .card {
   @apply bg-surface-2 rounded-[var(--radius-card)] border border-line backdrop-blur-xl;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px rgba(31, 42, 34, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 .input {
-  @apply w-full rounded-xl border border-line bg-white/[0.06] px-3 py-2.5 text-base text-ink outline-none placeholder:text-ink-3 focus:border-brand focus:ring-2 focus:ring-brand-soft;
+  @apply w-full rounded-xl border border-line bg-white/75 px-3 py-2.5 text-base text-ink outline-none placeholder:text-ink-3 focus:border-brand focus:ring-2 focus:ring-brand-soft;
 }
 select.input option,
 select option {
-  background: #1b2d1f;
-  color: #f3f5ef;
+  background: #ffffff;
+  color: #1f2a22;
 }
-input[type="date"].input,
-input[type="time"].input {
-  color-scheme: dark;
-}
+
 .label {
   @apply block text-sm font-medium text-ink-2 mb-1;
 }
@@ -117,36 +114,36 @@ input[type="time"].input {
   @apply relative isolate text-ink;
 }
 .glass {
-  @apply rounded-2xl border border-white/15 bg-white/[0.07] backdrop-blur-xl;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  @apply rounded-2xl border border-white/80 bg-white/55 backdrop-blur-xl;
+  box-shadow: 0 8px 32px rgba(31, 42, 34, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 .glass-hi {
-  @apply rounded-2xl border border-white/25 bg-white/[0.14] backdrop-blur-xl;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  @apply rounded-2xl border border-white/90 bg-white/80 backdrop-blur-xl;
+  box-shadow: 0 10px 36px rgba(31, 42, 34, 0.12), inset 0 1px 0 rgba(255, 255, 255, 1);
 }
 .glass-btn {
-  @apply inline-flex items-center justify-center gap-1.5 rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/20 active:scale-[0.98] disabled:opacity-40;
+  @apply inline-flex items-center justify-center gap-1.5 rounded-xl border border-white/90 bg-white/65 px-3 py-2 text-sm font-semibold text-ink backdrop-blur-md transition hover:bg-white active:scale-[0.98] disabled:opacity-40;
 }
 .glass-btn-solid {
-  @apply inline-flex items-center justify-center gap-1.5 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-brand-2 shadow-lg transition hover:bg-brand-soft active:scale-[0.98];
+  @apply inline-flex items-center justify-center gap-1.5 rounded-xl bg-brand px-3 py-2 text-sm font-semibold text-white shadow-md transition hover:bg-brand-2 active:scale-[0.98];
 }
 .glass-label {
-  @apply text-[11px] font-semibold uppercase tracking-[0.14em] text-white/55;
+  @apply text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-3;
 }
 .glass-table th {
-  @apply text-left text-[11px] uppercase tracking-wider text-white/50 font-semibold px-3 py-2 border-b border-white/10;
+  @apply text-left text-[11px] uppercase tracking-wider text-ink-3 font-semibold px-3 py-2 border-b border-line;
 }
 .glass-table td {
-  @apply px-3 py-2.5 border-b border-white/[0.07] align-middle;
+  @apply px-3 py-2.5 border-b border-black/5 align-middle;
 }
 
 /* Παράθυρα (modals): πιο «συμπαγές» γυαλί για να διαβάζονται οι φόρμες. */
 .glass-modal {
-  background: rgba(24, 38, 28, 0.92);
+  background: rgba(250, 250, 246, 0.94);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 30px 80px rgba(31, 42, 34, 0.25);
 }
 
 /* Εκτύπωση: πάντα λευκό χαρτί με μαύρα γράμματα. */

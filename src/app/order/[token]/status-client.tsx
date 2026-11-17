@@ -124,7 +124,7 @@ export function StatusClient({ order, token, venueName }: { order: PublicOrder; 
 
   return (
     <div className="flex-1 flex flex-col max-w-lg w-full mx-auto min-h-full">
-      <header className="bg-[#12201a]/60 backdrop-blur-xl px-4 pt-3 pb-3 border-b border-line">
+      <header className="bg-white/60 backdrop-blur-xl px-4 pt-3 pb-3 border-b border-line">
         <div className="flex items-center gap-3">
           <Mark height={44} />
           <div className="min-w-0">

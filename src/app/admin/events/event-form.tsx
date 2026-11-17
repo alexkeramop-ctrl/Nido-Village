@@ -278,7 +278,7 @@ export function EventForm({
               {PARTY_EXTRAS.map((x) => {
                 const on = party.extras?.includes(x.key) ?? false;
                 return (
-                  <label key={x.key} className={`cursor-pointer rounded-full border px-3 py-1 text-sm ${on ? "bg-amber-300/30 border-amber-300/60 text-amber-100" : "bg-surface-3 border-line"}`}>
+                  <label key={x.key} className={`cursor-pointer rounded-full border px-3 py-1 text-sm ${on ? "bg-amber-300/40 border-amber-400 text-amber-900" : "bg-surface-3 border-line"}`}>
                     <input
                       type="checkbox"
                       className="sr-only"

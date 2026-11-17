@@ -67,7 +67,7 @@ export function FinanceView({ data, year, today, suppliers }: { data: FinanceMon
               ›
             </Link>
             {!today.startsWith(data.month) && (
-              <Link href={{ query: { m: today.slice(0, 7) } }} className="text-sm text-white/70 hover:text-white underline-offset-4 hover:underline">
+              <Link href={{ query: { m: today.slice(0, 7) } }} className="text-sm text-ink-2 hover:text-ink underline-offset-4 hover:underline">
                 Τρέχων μήνας
               </Link>
             )}
@@ -117,7 +117,7 @@ export function FinanceView({ data, year, today, suppliers }: { data: FinanceMon
         <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-4">
           <div>
             <div className="glass-label">Κινήσεις μήνα</div>
-            <div className="text-xs text-white/55 mt-1">
+            <div className="text-xs text-ink-3 mt-1">
               Οι πληρωμές του ταμείου και οι παραλαβές της αποθήκης μετριούνται αυτόματα — μην τις ξαναπεράσεις εδώ.
             </div>
           </div>
@@ -136,35 +136,35 @@ export function FinanceView({ data, year, today, suppliers }: { data: FinanceMon
             </thead>
             <tbody>
               {data.entries.map((e) => (
-                <tr key={e.id} className="hover:bg-white/[0.04]">
+                <tr key={e.id} className="hover:bg-white/50">
                   <td className="num whitespace-nowrap">{fmtIsoDate(e.date)}</td>
                   <td>
-                    <span className={`inline-block h-2 w-2 rounded-full mr-2 ${e.kind === "income" ? "bg-emerald-300" : "bg-rose-300"}`} />
+                    <span className={`inline-block h-2 w-2 rounded-full mr-2 ${e.kind === "income" ? "bg-emerald-300" : "bg-rose-400"}`} />
                     {e.category}
                   </td>
-                  <td className="text-white/75">
+                  <td className="text-ink-2">
                     {e.description}
-                    {e.supplierName && <span className="text-white/50"> · {e.supplierName}</span>}
-                    {e.eventTitle && <span className="text-white/50"> · {e.eventTitle}</span>}
-                    {e.docNumber && <span className="text-white/50 num"> · #{e.docNumber}</span>}
+                    {e.supplierName && <span className="text-ink-3"> · {e.supplierName}</span>}
+                    {e.eventTitle && <span className="text-ink-3"> · {e.eventTitle}</span>}
+                    {e.docNumber && <span className="text-ink-3 num"> · #{e.docNumber}</span>}
                   </td>
-                  <td className="text-white/70">{FINANCE_METHOD_LABEL[e.method]}</td>
-                  <td className={`text-right num font-semibold whitespace-nowrap ${e.kind === "income" ? "text-emerald-300" : "text-rose-300"}`}>
+                  <td className="text-ink-2">{FINANCE_METHOD_LABEL[e.method]}</td>
+                  <td className={`text-right num font-semibold whitespace-nowrap ${e.kind === "income" ? "text-emerald-700" : "text-rose-600"}`}>
                     {e.kind === "income" ? "+" : "−"}
                     {eur(e.amountCents)}
                   </td>
                   <td className="text-right whitespace-nowrap">
-                    <button className="text-white/70 hover:text-white text-xs px-2" onClick={() => open({ kind: e.kind, entry: e })} disabled={pending}>
+                    <button className="text-ink-2 hover:text-ink text-xs px-2" onClick={() => open({ kind: e.kind, entry: e })} disabled={pending}>
                       Επεξεργασία
                     </button>
-                    <button className="text-rose-300 hover:text-rose-200 text-xs px-2" onClick={() => remove(e)} disabled={pending}>
+                    <button className="text-rose-600 hover:text-rose-600 text-xs px-2" onClick={() => remove(e)} disabled={pending}>
                       Διαγραφή
                     </button>
                   </td>
                 </tr>
               ))}
               {data.receipts.map((r) => (
-                <tr key={`r${r.id}`} className="text-white/60">
+                <tr key={`r${r.id}`} className="text-ink-2">
                   <td className="num whitespace-nowrap">{fmtIsoDate(r.date)}</td>
                   <td>
                     <span className="inline-block h-2 w-2 rounded-full mr-2 bg-rose-300/50" />
@@ -181,7 +181,7 @@ export function FinanceView({ data, year, today, suppliers }: { data: FinanceMon
               ))}
               {!data.entries.length && !data.receipts.length && (
                 <tr>
-                  <td colSpan={6} className="text-center text-white/55 py-6">
+                  <td colSpan={6} className="text-center text-ink-3 py-6">
                     Δεν έχουν περαστεί κινήσεις. Ξεκίνα με τα πάγια: ενοίκιο, ρεύμα, μισθοδοσία.
                   </td>
                 </tr>
@@ -207,20 +207,20 @@ function Kpi({ label, value, sub, tone, hi }: { label: string; value: number; su
   return (
     <div className={`${hi ? "glass-hi" : "glass"} p-4`}>
       <div className="glass-label">{label}</div>
-      <div className={`mt-1 text-3xl font-semibold num tracking-tight ${tone === "in" ? "text-emerald-200" : "text-rose-200"}`}>{eur(value)}</div>
-      <div className="mt-1 text-xs text-white/60">{sub}</div>
+      <div className={`mt-1 text-3xl font-semibold num tracking-tight ${tone === "in" ? "text-emerald-700" : "text-rose-600"}`}>{eur(value)}</div>
+      <div className="mt-1 text-xs text-ink-2">{sub}</div>
     </div>
   );
 }
 
 function Legend() {
   return (
-    <div className="flex gap-3 text-xs text-white/70">
+    <div className="flex gap-3 text-xs text-ink-2">
       <span className="inline-flex items-center gap-1">
         <i className="h-2 w-2 rounded-full bg-emerald-300" /> Έσοδα
       </span>
       <span className="inline-flex items-center gap-1">
-        <i className="h-2 w-2 rounded-full bg-rose-300" /> Έξοδα
+        <i className="h-2 w-2 rounded-full bg-rose-400" /> Έξοδα
       </span>
     </div>
   );
@@ -239,17 +239,17 @@ function Breakdown({ title, rows, total, tone, empty }: { title: string; rows: {
               <div className="flex justify-between gap-3 text-sm">
                 <span className="truncate">{r.label}</span>
                 <span className="num font-medium">
-                  {eur(r.cents)} <span className="text-white/45 text-xs">{total ? Math.round((r.cents / total) * 100) : 0}%</span>
+                  {eur(r.cents)} <span className="text-ink-3 text-xs">{total ? Math.round((r.cents / total) * 100) : 0}%</span>
                 </span>
               </div>
-              <div className="mt-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
+              <div className="mt-1 h-1.5 rounded-full bg-black/5 overflow-hidden">
                 <div className={`h-full rounded-full ${tone === "in" ? "bg-gradient-to-r from-emerald-400 to-teal-200" : "bg-gradient-to-r from-rose-400 to-amber-200"}`} style={{ width: `${(r.cents / max) * 100}%` }} />
               </div>
             </li>
           ))}
         </ul>
       ) : (
-        <div className="text-sm text-white/55">{empty}</div>
+        <div className="text-sm text-ink-3">{empty}</div>
       )}
     </div>
   );
@@ -262,10 +262,10 @@ function DayChart({ days, today }: { days: FinanceMonth["days"]; today: string }
       {days.map((d) => (
         <div key={d.date} className="flex-1 min-w-0 flex flex-col items-center justify-end h-full group" title={`${fmtIsoDate(d.date)} · έσοδα ${eur(d.income)} · έξοδα ${eur(d.expense)}`}>
           <div className="w-full flex items-end justify-center gap-[1px] flex-1">
-            <div className="w-1/2 rounded-t bg-emerald-300/80 group-hover:bg-emerald-200" style={{ height: `${(d.income / max) * 100}%` }} />
-            <div className="w-1/2 rounded-t bg-rose-300/70 group-hover:bg-rose-200" style={{ height: `${(d.expense / max) * 100}%` }} />
+            <div className="w-1/2 rounded-t bg-emerald-500/80 group-hover:bg-emerald-600" style={{ height: `${(d.income / max) * 100}%` }} />
+            <div className="w-1/2 rounded-t bg-rose-400/80 group-hover:bg-rose-500" style={{ height: `${(d.expense / max) * 100}%` }} />
           </div>
-          <div className={`mt-1 text-[9px] num ${d.date === today ? "text-white font-bold" : "text-white/40"}`}>{Number(d.date.slice(8))}</div>
+          <div className={`mt-1 text-[9px] num ${d.date === today ? "text-ink font-bold" : "text-ink-3"}`}>{Number(d.date.slice(8))}</div>
         </div>
       ))}
     </div>
@@ -281,11 +281,11 @@ function YearChart({ year, current }: { year: FinanceYear; current: string }) {
         return (
           <div key={m.month} className="flex flex-col items-center h-full" title={`${monthLabel(m.month)} · έσοδα ${eur(m.income)} · έξοδα ${eur(m.expense)} · αποτέλεσμα ${eur(net)}`}>
             <div className="w-full flex-1 flex items-end justify-center gap-[2px]">
-              <div className="w-1/2 max-w-4 rounded-t bg-emerald-300/80" style={{ height: `${(m.income / max) * 100}%` }} />
-              <div className="w-1/2 max-w-4 rounded-t bg-rose-300/70" style={{ height: `${(m.expense / max) * 100}%` }} />
+              <div className="w-1/2 max-w-4 rounded-t bg-emerald-500/80" style={{ height: `${(m.income / max) * 100}%` }} />
+              <div className="w-1/2 max-w-4 rounded-t bg-rose-400/80" style={{ height: `${(m.expense / max) * 100}%` }} />
             </div>
-            <div className={`mt-1 text-[10px] ${m.month === current ? "text-white font-bold" : "text-white/45"}`}>{SHORT_MONTHS[Number(m.month.slice(5)) - 1]}</div>
-            <div className={`text-[9px] num ${net > 0 ? "text-emerald-300" : net < 0 ? "text-rose-300" : "text-white/30"}`}>{net ? `${net > 0 ? "+" : "−"}${Math.round(Math.abs(net) / 100)}` : "·"}</div>
+            <div className={`mt-1 text-[10px] ${m.month === current ? "text-ink font-bold" : "text-ink-3"}`}>{SHORT_MONTHS[Number(m.month.slice(5)) - 1]}</div>
+            <div className={`text-[9px] num ${net > 0 ? "text-emerald-700" : net < 0 ? "text-rose-600" : "text-ink-3"}`}>{net ? `${net > 0 ? "+" : "−"}${Math.round(Math.abs(net) / 100)}` : "·"}</div>
           </div>
         );
       })}

@@ -54,7 +54,7 @@ export default async function AdminOverviewPage() {
           <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">
             {greeting()}, {user.name} 👋
           </h1>
-          <p className="text-sm text-white/65 mt-1">
+          <p className="text-sm text-ink-2 mt-1">
             {thisWeekend.length ? `${thisWeekend.length} κρατήσεις τις επόμενες 7 ημέρες.` : "Καμία κράτηση τις επόμενες 7 ημέρες."}
             {low.length ? ` ${low.length} είδη θέλουν παραγγελία.` : " Η αποθήκη είναι εντάξει."}
           </p>
@@ -88,11 +88,11 @@ export default async function AdminOverviewPage() {
       {/* Μήνας: έσοδα / έξοδα */}
       {fin && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-          <Link href="/admin/finance" className="glass p-4 lg:col-span-2 hover:bg-white/[0.1] transition-colors">
+          <Link href="/admin/finance" className="glass p-4 lg:col-span-2 hover:bg-white/80 transition-colors">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <div className="glass-label">{monthLabel(dash.today.slice(0, 7))} · αποτέλεσμα</div>
-                <div className={`mt-1 text-4xl font-semibold num tracking-tight ${fin.net >= 0 ? "text-emerald-200" : "text-rose-200"}`}>
+                <div className={`mt-1 text-4xl font-semibold num tracking-tight ${fin.net >= 0 ? "text-emerald-700" : "text-rose-600"}`}>
                   {fin.net >= 0 ? "+" : "−"}
                   {eur(Math.abs(fin.net))}
                 </div>
@@ -100,24 +100,24 @@ export default async function AdminOverviewPage() {
               <div className="flex gap-6 text-sm">
                 <div>
                   <div className="glass-label">Έσοδα</div>
-                  <div className="num font-semibold text-emerald-200">{eur(fin.income.total)}</div>
+                  <div className="num font-semibold text-emerald-700">{eur(fin.income.total)}</div>
                 </div>
                 <div>
                   <div className="glass-label">Έξοδα</div>
-                  <div className="num font-semibold text-rose-200">{eur(fin.expense.total)}</div>
+                  <div className="num font-semibold text-rose-600">{eur(fin.expense.total)}</div>
                 </div>
               </div>
             </div>
             <div className="mt-4 flex items-end gap-2 h-24">
               {weekDays.map((w) => (
                 <div key={w.iso} className="flex-1 flex flex-col items-center gap-1 h-full justify-end" title={`${fmtIsoDate(w.iso)} · ${eur(w.cents)}`}>
-                  <div className="text-[10px] num text-white/60">{w.cents ? Math.round(w.cents / 100) : ""}</div>
+                  <div className="text-[10px] num text-ink-2">{w.cents ? Math.round(w.cents / 100) : ""}</div>
                   <div className="w-full max-w-10 rounded-lg bg-gradient-to-t from-emerald-400/70 to-teal-200/90" style={{ height: `${Math.max(4, (w.cents / weekMax) * 100)}%`, opacity: w.cents ? 1 : 0.25 }} />
-                  <div className={`text-[10px] ${w.iso === dash.today ? "text-white font-bold" : "text-white/50"}`}>{WEEKDAYS_SHORT[weekdayMon(w.iso)]}</div>
+                  <div className={`text-[10px] ${w.iso === dash.today ? "text-ink font-bold" : "text-ink-3"}`}>{WEEKDAYS_SHORT[weekdayMon(w.iso)]}</div>
                 </div>
               ))}
             </div>
-            <div className="mt-1 text-[11px] text-white/45">Έσοδα τελευταίων 7 ημερών (ταμείο + καταχωρημένα)</div>
+            <div className="mt-1 text-[11px] text-ink-3">Έσοδα τελευταίων 7 ημερών (ταμείο + καταχωρημένα)</div>
           </Link>
           <div className="glass p-4">
             <div className="glass-label mb-3">Μεγαλύτερα έξοδα μήνα</div>
@@ -132,14 +132,14 @@ export default async function AdminOverviewPage() {
                         <span className="truncate">{r.category}</span>
                         <span className="num">{eur(r.cents)}</span>
                       </div>
-                      <div className="mt-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                      <div className="mt-1 h-1.5 rounded-full bg-black/5 overflow-hidden">
                         <div className="h-full rounded-full bg-gradient-to-r from-rose-400 to-amber-200" style={{ width: `${(r.cents / fin.expense.total) * 100}%` }} />
                       </div>
                     </li>
                   ))}
               </ul>
             ) : (
-              <div className="text-sm text-white/55">
+              <div className="text-sm text-ink-3">
                 Δεν έχουν περαστεί έξοδα. <Link href="/admin/finance" className="underline">Πέρασε τα πάγια</Link> για να βλέπεις το πραγματικό κέρδος.
               </div>
             )}
@@ -186,7 +186,7 @@ export default async function AdminOverviewPage() {
         <div className="glass p-4 lg:col-span-2">
           <div className="flex items-center justify-between mb-3">
             <div className="glass-label">Αποθήκη · κάτω από το ελάχιστο</div>
-            <Link href="/admin/inventory" className="text-xs text-white/70 hover:text-white">
+            <Link href="/admin/inventory" className="text-xs text-ink-2 hover:text-ink">
               Αποθήκη →
             </Link>
           </div>
@@ -198,19 +198,19 @@ export default async function AdminOverviewPage() {
                   <li key={i.id}>
                     <div className="flex justify-between gap-2 text-sm">
                       <span className="truncate">{i.name}</span>
-                      <span className="num text-rose-200">
+                      <span className="num text-rose-600">
                         {String(i.stock).replace(".", ",")} / {String(i.min).replace(".", ",")}
                       </span>
                     </div>
-                    <div className="mt-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
-                      <div className="h-full rounded-full bg-rose-300" style={{ width: `${pct}%` }} />
+                    <div className="mt-1 h-1.5 rounded-full bg-black/5 overflow-hidden">
+                      <div className="h-full rounded-full bg-rose-400" style={{ width: `${pct}%` }} />
                     </div>
                   </li>
                 );
               })}
             </ul>
           ) : (
-            <div className="text-sm text-emerald-200">✓ Όλα τα είδη πάνω από το ελάχιστο απόθεμα.</div>
+            <div className="text-sm text-emerald-700">✓ Όλα τα είδη πάνω από το ελάχιστο απόθεμα.</div>
           )}
         </div>
         <div className="glass p-4 space-y-3">
@@ -234,13 +234,13 @@ function Tile({ label, value, sub, hi, accent, href }: { label: string; value: s
     <>
       <div className="flex items-center justify-between">
         <div className="glass-label">{label}</div>
-        {accent && <span className={`h-2 w-2 rounded-full ${accent === "amber" ? "bg-amber-300" : "bg-rose-300"} animate-pulse`} />}
+        {accent && <span className={`h-2 w-2 rounded-full ${accent === "amber" ? "bg-amber-300" : "bg-rose-400"} animate-pulse`} />}
       </div>
       <div className="mt-1 text-3xl font-semibold num tracking-tight">{value}</div>
-      <div className="mt-1 text-xs text-white/60 truncate">{sub}</div>
+      <div className="mt-1 text-xs text-ink-2 truncate">{sub}</div>
     </>
   );
-  const cls = `${hi ? "glass-hi" : "glass"} p-4 block transition-colors hover:bg-white/[0.12]`;
+  const cls = `${hi ? "glass-hi" : "glass"} p-4 block transition-colors hover:bg-white/80`;
   return href ? (
     <Link href={href} className={cls}>
       {body}
@@ -265,16 +265,16 @@ function EventList({
     <div className="glass p-4">
       <div className="flex items-center justify-between mb-2">
         <div className="font-semibold">{title}</div>
-        <Link href={href} className="text-xs text-white/70 hover:text-white">
+        <Link href={href} className="text-xs text-ink-2 hover:text-ink">
           Ημερολόγιο →
         </Link>
       </div>
       {items.length ? (
-        <ul className="divide-y divide-white/[0.08]">
+        <ul className="divide-y divide-black/5">
           {items.map((e) => (
             <li key={e.id} className="flex items-center gap-3 py-2.5">
-              <div className="w-12 shrink-0 rounded-xl bg-white/10 border border-white/10 text-center py-1">
-                <div className="text-[10px] uppercase text-white/60">{WEEKDAYS_SHORT[weekdayMon(e.date)]}</div>
+              <div className="w-12 shrink-0 rounded-xl bg-black/5 border border-white/80 text-center py-1">
+                <div className="text-[10px] uppercase text-ink-2">{WEEKDAYS_SHORT[weekdayMon(e.date)]}</div>
                 <div className="text-lg font-semibold leading-5 num">{Number(e.date.slice(8))}</div>
               </div>
               <div className="min-w-0 flex-1">
@@ -282,17 +282,17 @@ function EventList({
                   <span className={`inline-block h-2 w-2 rounded-full mr-1.5 align-middle ${e.dot}`} />
                   {e.title}
                 </div>
-                <div className="text-xs text-white/60 truncate">
+                <div className="text-xs text-ink-2 truncate">
                   <span className="num">{e.time}</span>
                   {e.sub && ` · ${e.sub}`}
                 </div>
               </div>
-              <span className={`text-[11px] rounded-full px-2 py-0.5 border ${e.confirmed ? "border-emerald-300/40 text-emerald-200 bg-emerald-300/10" : "border-amber-300/40 text-amber-200 bg-amber-300/10"}`}>{e.status}</span>
+              <span className={`text-[11px] rounded-full px-2 py-0.5 border ${e.confirmed ? "border-emerald-600/30 text-emerald-700 bg-emerald-500/10" : "border-amber-600/30 text-amber-700 bg-amber-400/15"}`}>{e.status}</span>
             </li>
           ))}
         </ul>
       ) : (
-        <div className="text-sm text-white/55 py-2">{empty}</div>
+        <div className="text-sm text-ink-3 py-2">{empty}</div>
       )}
     </div>
   );
@@ -300,11 +300,11 @@ function EventList({
 
 function Status({ ok, label, detail, href }: { ok: boolean; label: string; detail: string; href: string }) {
   return (
-    <Link href={href} className="flex items-center gap-3 rounded-xl px-2 py-1.5 -mx-2 hover:bg-white/[0.06]">
-      <span className={`h-2.5 w-2.5 rounded-full ${ok ? "bg-emerald-300 shadow-[0_0_10px_#6ee7b7]" : "bg-rose-400 shadow-[0_0_10px_#fb7185]"}`} />
+    <Link href={href} className="flex items-center gap-3 rounded-xl px-2 py-1.5 -mx-2 hover:bg-white/50">
+      <span className={`h-2.5 w-2.5 rounded-full ${ok ? "bg-emerald-500 shadow-[0_0_10px_#34d399]" : "bg-rose-500 shadow-[0_0_10px_#fb7185]"}`} />
       <div className="min-w-0">
         <div className="text-sm font-medium">{label}</div>
-        <div className="text-xs text-white/55 truncate">{detail}</div>
+        <div className="text-xs text-ink-3 truncate">{detail}</div>
       </div>
     </Link>
   );
