@@ -19,6 +19,7 @@ const GROUPS: { title: string | null; items: Item[] }[] = [
     title: "Οικονομικά",
     items: [
       { href: "/admin/finance", label: "Έσοδα – Έξοδα", icon: "💶", adminOnly: true },
+      { href: "/admin/registers", label: "Ταμεία ημέρας", icon: "🧾" },
       { href: "/admin/reports", label: "Αναφορές πωλήσεων", icon: "📊" },
     ],
   },

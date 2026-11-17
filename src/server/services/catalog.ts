@@ -216,6 +216,26 @@ export async function getMenu() {
 
 export type Menu = Awaited<ReturnType<typeof getMenu>>;
 
+/**
+ * Αποτύπωμα του καταλόγου όπως τον βλέπει το ταμείο: τιμές, ονόματα, ενεργά είδη, επιλογές. Αλλάζει ΜΟΝΟ όταν αλλάξει ο κατάλογος.
+ * Το ταμείο το συγκρίνει σε κάθε ανανέωση στο παρασκήνιο: στο Cloudflare δεν υπάρχουν ζωντανά events,
+ * οπότε μόνο έτσι μαθαίνει ότι άλλαξε μια τιμή και ξαναφορτώνει το μενού (αλλιώς θα χρέωνε την παλιά).
+ * Η διαθεσιμότητα («εξαντλήθηκε») δεν μετρά εδώ: έρχεται χωριστά με κάθε στιγμιότυπο.
+ */
+export async function menuVersion(): Promise<string> {
+  const db = await getDb();
+  const res = (await db.execute(sql`
+    select md5(concat_ws('#',
+      coalesce((select string_agg(concat_ws('|', id, name, color, sort), ';' order by id) from categories where active), ''),
+      coalesce((select string_agg(concat_ws('|', id, category_id, name, price_cents, vat_rate_id, sort), ';' order by id) from products where active), ''),
+      coalesce((select string_agg(concat_ws('|', product_id, group_id, sort), ';' order by product_id, group_id) from product_modifier_groups), ''),
+      coalesce((select string_agg(concat_ws('|', id, name, min_select, max_select), ';' order by id) from modifier_groups where active), ''),
+      coalesce((select string_agg(concat_ws('|', id, group_id, name, price_delta_cents, sort), ';' order by id) from modifiers where active), ''),
+      coalesce((select string_agg(concat_ws('|', id, rate_pct), ';' order by id) from vat_rates), '')
+    )) as v`)) as unknown as { rows: { v: string }[] };
+  return String(res.rows[0]?.v ?? "");
+}
+
 /** Φορτώνει προϊόντα με κατηγορία και ΦΠΑ για χρήση από την παραγγελιοληψία. */
 export async function loadProductsForOrder(ids: number[]) {
   const db = await getDb();

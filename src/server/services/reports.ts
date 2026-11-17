@@ -33,8 +33,13 @@ function tzOffsetMinutes(date: Date): number {
   return Math.round((asUtc - date.getTime()) / 60000);
 }
 
+/** Η ημερομηνία (YYYY-MM-DD) μιας χρονικής στιγμής στην ώρα Αθήνας. */
+export function athensDateOf(date: Date): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+}
+
 export function todayAthens(): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  return athensDateOf(new Date());
 }
 
 export function addDays(isoDate: string, days: number): string {

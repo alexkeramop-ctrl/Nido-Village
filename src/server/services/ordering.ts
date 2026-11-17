@@ -5,13 +5,16 @@ import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { audit, type DbLike } from "@/server/audit";
 import { emit } from "@/server/events";
-import { getFiscalProvider } from "@/server/fiscal/provider";
-import { enqueue } from "@/server/printing/queue";
+import { getFiscalProvider, type FiscalLine } from "@/server/fiscal/provider";
+import { enqueue, enqueueMany } from "@/server/printing/queue";
 import { kitchenTicket, voidTicket, type KitchenItem } from "@/server/printing/templates";
-import type { OrderType } from "@/db/schema";
-import { applyRecipeMovements } from "./inventory";
+import type { OrderType, SessionSource } from "@/db/schema";
+import { applyRecipeMovements, applyRecipeMovementsBatch } from "./inventory";
 import { findOpenSessionForTable } from "./floor";
 import { getSessionDetail } from "./billing";
+
+/** Ετικέτα στα δελτία κουζίνας/μπαρ και στο KDS για πώληση από ταμείο self-service. */
+export const TILL_TYPE_LABEL = "ΤΑΜΕΙΟ";
 
 export type CartLine = {
   productId: number;
@@ -52,149 +55,167 @@ export async function setCovers(sessionId: number, covers: number) {
   emit({ type: "session.changed", sessionId });
 }
 
-async function stationForProduct(p: { printStationId: number | null; category: { printStationId: number | null } }) {
-  return p.printStationId ?? p.category.printStationId ?? null;
+/* ------------------------- Αποστολή γύρου (πυρήνας) ------------------------- */
+
+/** Ό,τι χρειάζεται ένας γύρος από τη βάση: τα είδη (με κατηγορία, ΦΠΑ, επιλογές) και οι ενεργοί σταθμοί. Δύο ερωτήματα παράλληλα. */
+export async function loadRoundContext(db: DbLike, lines: CartLine[]) {
+  const productIds = [...new Set(lines.map((l) => l.productId))].filter((id) => Number.isInteger(id));
+  const [products, stations] = await Promise.all([
+    productIds.length
+      ? db.query.products.findMany({
+          where: and(inArray(schema.products.id, productIds), eq(schema.products.active, true)),
+          with: { category: true, vatRate: true, modifierGroups: { with: { group: { with: { modifiers: true } } } } },
+        })
+      : Promise.resolve([]),
+    db.query.printStations.findMany({ where: eq(schema.printStations.enabled, true) }),
+  ]);
+  return { products, stations };
 }
 
-/** Αποστολή γύρου παραγγελίας: εγγραφή, αφαίρεση αποθέματος, δελτίο παραγγελίας, εκτύπωση κουζίνας. */
-export async function sendRound(sessionId: number, cart: CartLine[], employeeId: number, notes?: string | null) {
-  const db = await getDb();
+export type RoundContext = Awaited<ReturnType<typeof loadRoundContext>>;
+type RoundProduct = RoundContext["products"][number];
+type RoundModifier = { id: number; name: string; priceDeltaCents: number };
+export type ResolvedLine = { line: CartLine; product: RoundProduct; mods: RoundModifier[] };
+
+/** Ελέγχει το καλάθι απέναντι στον κατάλογο (διαθεσιμότητα, έγκυρες επιλογές) χωρίς να αγγίζει τη βάση. */
+export function resolveLines(cart: CartLine[], products: RoundProduct[]): ResolvedLine[] {
   const lines = cart.filter((l) => l.qty > 0);
   if (!lines.length) throw new Error("Η παραγγελία είναι κενή");
-  const session = await db.query.tableSessions.findFirst({
-    where: eq(schema.tableSessions.id, sessionId),
-    with: { table: { with: { area: true } }, orders: true },
-  });
-  if (!session) throw new Error("Η συνεδρία δεν βρέθηκε");
-  if (session.status === "closed" || session.status === "cancelled") throw new Error("Η συνεδρία έχει κλείσει");
-  const employee = await db.query.employees.findFirst({ where: eq(schema.employees.id, employeeId) });
-  if (!employee) throw new Error("Άγνωστος υπάλληλος");
-
-  const productIds = [...new Set(lines.map((l) => l.productId))];
-  const products = await db.query.products.findMany({
-    where: and(inArray(schema.products.id, productIds), eq(schema.products.active, true)),
-    with: { category: true, vatRate: true, modifierGroups: { with: { group: { with: { modifiers: true } } } } },
-  });
   const byId = new Map(products.map((p) => [p.id, p]));
-  for (const l of lines) {
-    const p = byId.get(l.productId);
-    if (!p) throw new Error(`Το είδος ${l.productId} δεν είναι διαθέσιμο`);
-    if (!p.available) throw new Error(`Το είδος «${p.name}» έχει εξαντληθεί`);
-  }
+  return lines.map((line) => {
+    const product = byId.get(line.productId);
+    if (!product) throw new Error(`Το είδος ${line.productId} δεν είναι διαθέσιμο`);
+    if (!product.available) throw new Error(`Το είδος «${product.name}» έχει εξαντληθεί`);
+    const allowed = new Map<number, RoundModifier>();
+    for (const pg of product.modifierGroups) for (const m of pg.group.modifiers) if (m.active) allowed.set(m.id, m);
+    const mods = (line.modifierIds ?? []).map((id) => {
+      const m = allowed.get(id);
+      if (!m) throw new Error(`Μη έγκυρη επιλογή για «${product.name}»`);
+      return m;
+    });
+    return { line, product, mods };
+  });
+}
 
-  const stations = await db.query.printStations.findMany({ where: eq(schema.printStations.enabled, true) });
-  const stationById = new Map(stations.map((s) => [s.id, s]));
-  // Ροφήματα: τυπώνονται στο μπαρ του χώρου όπου βρίσκεται το τραπέζι (αν έχει οριστεί).
-  const areaBar = session.table?.area?.barStationId ?? null;
+export type SendRoundCtx = {
+  sessionId: number;
+  roundNo: number;
+  tableName: string;
+  orderType: OrderType;
+  label: string | null;
+  /** Το μπαρ του χώρου του τραπεζιού (τα ροφήματα τυπώνονται εκεί). null για πακέτο/ταμείο. */
+  areaBarStationId: number | null;
+  buzzerNo?: number | null;
+  customerName?: string | null;
+  /** Ετικέτα τύπου στο δελτίο κουζίνας αντί για ΤΡΑΠΕΖΙ/ΠΑΚΕΤΟ (π.χ. «ΤΑΜΕΙΟ»). */
+  typeLabel?: string | null;
+  employee: { id: number; name: string };
+  resolved: ResolvedLine[];
+  notes?: string | null;
+  stations: RoundContext["stations"];
+  now: Date;
+};
+
+/**
+ * Γράφει έναν γύρο μέσα σε ΥΠΑΡΧΟΥΣΑ συναλλαγή: παραγγελία, είδη, επιλογές, κινήσεις αποθήκης, δελτία κουζίνας/μπαρ.
+ * Όλα με ομαδικές εγγραφές (σταθερό πλήθος ερωτημάτων, ανεξάρτητο από το μέγεθος του καλαθιού).
+ * Το χρησιμοποιούν το sendRound (σερβιτόρος/QR) και η γρήγορη πώληση του ταμείου.
+ */
+export async function sendRoundTx(tx: DbLike, ctx: SendRoundCtx) {
+  const stationById = new Map(ctx.stations.map((s) => [s.id, s]));
   const resolveStation = (id: number | null) => {
     if (id === null) return null;
     const st = stationById.get(id);
-    if (st?.kind === "bar" && areaBar && stationById.has(areaBar)) return areaBar;
+    if (st?.kind === "bar" && ctx.areaBarStationId && stationById.has(ctx.areaBarStationId)) return ctx.areaBarStationId;
     return id;
   };
-  const roundNo = session.orders.length + 1;
-  const tableName = session.table ? session.table.name : session.label ?? `#${session.id}`;
-  const now = new Date();
+  const [order] = await tx
+    .insert(schema.orders)
+    .values({ sessionId: ctx.sessionId, roundNo: ctx.roundNo, employeeId: ctx.employee.id, notes: ctx.notes?.trim() || null, createdAt: ctx.now })
+    .returning();
 
-  const result = await db.transaction(async (tx) => {
-    const [order] = await tx
-      .insert(schema.orders)
-      .values({ sessionId, roundNo, employeeId, notes: notes?.trim() || null })
-      .returning();
-    const byStation = new Map<number, KitchenItem[]>();
-    const fiscalLines = [];
-    for (const l of lines) {
-      const p = byId.get(l.productId)!;
-      const allowedMods = new Map<number, { id: number; name: string; priceDeltaCents: number }>();
-      for (const pg of p.modifierGroups) for (const m of pg.group.modifiers) if (m.active) allowedMods.set(m.id, m);
-      const mods = (l.modifierIds ?? []).map((id) => {
-        const m = allowedMods.get(id);
-        if (!m) throw new Error(`Μη έγκυρη επιλογή για «${p.name}»`);
-        return m;
-      });
-      const stationId = resolveStation(await stationForProduct(p));
-      const [item] = await tx
-        .insert(schema.orderItems)
-        .values({
-          orderId: order.id,
-          sessionId,
-          productId: p.id,
-          nameSnapshot: p.name,
-          unitPriceCents: p.priceCents,
-          qty: l.qty,
-          vatRateId: p.vatRateId,
-          vatRatePct: p.vatRate.ratePct,
-          course: l.course ?? 1,
-          notes: l.notes?.trim() || null,
-          status: "sent",
-          printStationId: stationId,
-          sentAt: now,
-        })
-        .returning();
-      if (mods.length) {
-        await tx.insert(schema.orderItemModifiers).values(
-          mods.map((m) => ({ orderItemId: item.id, modifierId: m.id, nameSnapshot: m.name, priceDeltaCents: m.priceDeltaCents })),
-        );
-      }
-      await applyRecipeMovements(tx, {
-        productId: p.id,
-        modifierIds: mods.map((m) => m.id),
-        qty: l.qty,
-        kind: "sale",
-        refType: "order_item",
-        refId: item.id,
-        employeeId,
-      });
-      if (stationId && stationById.has(stationId)) {
-        const arr = byStation.get(stationId) ?? [];
-        arr.push({ qty: l.qty, name: p.name, modifiers: mods.map((m) => m.name), notes: item.notes, course: item.course });
-        byStation.set(stationId, arr);
-      }
-      fiscalLines.push({
-        name: p.name,
-        qty: l.qty,
-        unitPriceCents: p.priceCents + mods.reduce((n, m) => n + m.priceDeltaCents, 0),
-        vatRatePct: Number(p.vatRate.ratePct),
-        mydataVatCategory: p.vatRate.mydataCategory,
-      });
-    }
-    for (const [stationId, items] of byStation) {
-      const st = stationById.get(stationId)!;
-      await enqueue(
-        tx,
-        stationId,
-        "kitchen_ticket",
-        kitchenTicket({
-          stationName: st.name,
-          tableName,
-          orderType: session.orderType,
-          label: session.label,
-          waiter: employee.name,
-          roundNo,
-          time: now,
-          items,
-          notes,
+  const rows = ctx.resolved.map(({ line, product }) => ({
+    orderId: order.id,
+    sessionId: ctx.sessionId,
+    productId: product.id,
+    nameSnapshot: product.name,
+    unitPriceCents: product.priceCents,
+    qty: line.qty,
+    vatRateId: product.vatRateId,
+    vatRatePct: product.vatRate.ratePct,
+    course: line.course ?? 1,
+    notes: line.notes?.trim() || null,
+    status: "sent" as const,
+    printStationId: resolveStation(product.printStationId ?? product.category.printStationId ?? null),
+    sentAt: ctx.now,
+  }));
+  // Η Postgres δίνει τα id με τη σειρά των VALUES· ταξινομούμε κατά id και επαληθεύουμε ότι κάθε γραμμή αντιστοιχεί στο είδος της.
+  const items = (await tx.insert(schema.orderItems).values(rows).returning()).sort((a, b) => a.id - b.id);
+  if (items.length !== rows.length || items.some((it, i) => it.productId !== rows[i].productId || it.qty !== rows[i].qty)) {
+    throw new Error("Η παραγγελία δεν καταχωρήθηκε σωστά. Δοκίμασε ξανά.");
+  }
+
+  const modRows = ctx.resolved.flatMap(({ mods }, i) =>
+    mods.map((m) => ({ orderItemId: items[i].id, modifierId: m.id, nameSnapshot: m.name, priceDeltaCents: m.priceDeltaCents })),
+  );
+  if (modRows.length) await tx.insert(schema.orderItemModifiers).values(modRows);
+
+  await applyRecipeMovementsBatch(
+    tx,
+    ctx.resolved.map(({ line, product, mods }, i) => ({ productId: product.id, modifierIds: mods.map((m) => m.id), qty: line.qty, refId: items[i].id })),
+    { kind: "sale", refType: "order_item", employeeId: ctx.employee.id },
+  );
+
+  const byStation = new Map<number, KitchenItem[]>();
+  ctx.resolved.forEach(({ line, product, mods }, i) => {
+    const stationId = items[i].printStationId;
+    if (stationId === null || !stationById.has(stationId)) return;
+    const arr = byStation.get(stationId) ?? [];
+    arr.push({ qty: line.qty, name: product.name, modifiers: mods.map((m) => m.name), notes: items[i].notes, course: items[i].course });
+    byStation.set(stationId, arr);
+  });
+  await enqueueMany(
+    tx,
+    [...byStation].map(([stationId, kitchenItems]) => {
+      const station = stationById.get(stationId)!;
+      return {
+        station,
+        kind: "kitchen_ticket" as const,
+        doc: kitchenTicket({
+          stationName: station.name,
+          tableName: ctx.tableName,
+          orderType: ctx.orderType,
+          label: ctx.label,
+          waiter: ctx.employee.name,
+          roundNo: ctx.roundNo,
+          time: ctx.now,
+          items: kitchenItems,
+          notes: ctx.notes,
+          buzzerNo: ctx.buzzerNo ?? null,
+          customerName: ctx.customerName ?? null,
+          typeLabel: ctx.typeLabel ?? null,
         }),
-      );
-    }
-    if (session.status === "billed") {
-      await tx.update(schema.tableSessions).set({ status: "open" }).where(eq(schema.tableSessions.id, sessionId));
-    }
-    return { order, fiscalLines };
-  });
+      };
+    }),
+  );
 
-  // Δελτίο παραγγελίας εστίασης (8.6). Στη Φάση 1 απλώς καταγράφεται ως "not_required".
-  const fiscal = await getFiscalProvider().issueOrderSlip({
-    sessionId,
-    orderId: result.order.id,
-    tableName,
-    employeeName: employee.name,
-    lines: result.fiscalLines,
-    issuedAt: now,
-  });
+  const fiscalLines: FiscalLine[] = ctx.resolved.map(({ line, product, mods }) => ({
+    name: product.name,
+    qty: line.qty,
+    unitPriceCents: product.priceCents + mods.reduce((n, m) => n + m.priceDeltaCents, 0),
+    vatRatePct: Number(product.vatRate.ratePct),
+    mydataVatCategory: product.vatRate.mydataCategory,
+  }));
+  return { order, items, fiscalLines };
+}
+
+/** Δελτίο παραγγελίας εστίασης (8.6), ΜΕΤΑ το commit. Στη Φάση 1 απλώς καταγράφεται ως "not_required". */
+export async function recordOrderSlip(input: { sessionId: number; orderId: number; tableName: string; employeeName: string; lines: FiscalLine[]; issuedAt: Date }) {
+  const db = await getDb();
+  const fiscal = await getFiscalProvider().issueOrderSlip(input);
   await db.insert(schema.fiscalDocuments).values({
-    sessionId,
-    orderId: result.order.id,
+    sessionId: input.sessionId,
+    orderId: input.orderId,
     kind: "order_slip_8_6",
     status: fiscal.status,
     provider: fiscal.provider,
@@ -202,8 +223,57 @@ export async function sendRound(sessionId: number, cart: CartLine[], employeeId:
     uid: fiscal.status === "issued" ? fiscal.uid ?? null : null,
     payload: fiscal.status === "not_required" ? { note: fiscal.note } : fiscal.status === "issued" ? (fiscal.raw as object) ?? null : null,
     error: fiscal.status === "failed" ? fiscal.error : null,
-    issuedAt: fiscal.status === "issued" ? now : null,
+    issuedAt: fiscal.status === "issued" ? input.issuedAt : null,
   });
+}
+
+/** Αποστολή γύρου παραγγελίας: εγγραφή, αφαίρεση αποθέματος, δελτίο παραγγελίας, εκτύπωση κουζίνας. */
+export async function sendRound(sessionId: number, cart: CartLine[], employeeId: number, notes?: string | null) {
+  const db = await getDb();
+  const lines = cart.filter((l) => l.qty > 0);
+  if (!lines.length) throw new Error("Η παραγγελία είναι κενή");
+  const [session, employee, round] = await Promise.all([
+    db.query.tableSessions.findFirst({
+      where: eq(schema.tableSessions.id, sessionId),
+      with: { table: { with: { area: true } }, orders: true },
+    }),
+    db.query.employees.findFirst({ where: eq(schema.employees.id, employeeId) }),
+    loadRoundContext(db, lines),
+  ]);
+  if (!session) throw new Error("Η συνεδρία δεν βρέθηκε");
+  if (session.status === "closed" || session.status === "cancelled") throw new Error("Η συνεδρία έχει κλείσει");
+  if (!employee) throw new Error("Άγνωστος υπάλληλος");
+  const resolved = resolveLines(lines, round.products);
+
+  const roundNo = session.orders.length + 1;
+  const tableName = session.table ? session.table.name : session.label ?? `#${session.id}`;
+  const now = new Date();
+
+  const result = await db.transaction(async (tx) => {
+    const r = await sendRoundTx(tx, {
+      sessionId,
+      roundNo,
+      tableName,
+      orderType: session.orderType,
+      label: session.label,
+      // Ροφήματα: τυπώνονται στο μπαρ του χώρου όπου βρίσκεται το τραπέζι (αν έχει οριστεί).
+      areaBarStationId: session.table?.area?.barStationId ?? null,
+      buzzerNo: session.buzzerNo,
+      customerName: session.customerName,
+      typeLabel: session.source === "till" ? TILL_TYPE_LABEL : null,
+      employee,
+      resolved,
+      notes,
+      stations: round.stations,
+      now,
+    });
+    if (session.status === "billed") {
+      await tx.update(schema.tableSessions).set({ status: "open" }).where(eq(schema.tableSessions.id, sessionId));
+    }
+    return r;
+  });
+
+  await recordOrderSlip({ sessionId, orderId: result.order.id, tableName, employeeName: employee.name, lines: result.fiscalLines, issuedAt: now });
 
   await refreshSessionReadiness(sessionId);
   emit({ type: "print.changed" });
@@ -258,6 +328,7 @@ export async function voidItem(itemId: number, reason: string, employeeId: numbe
           time: new Date(),
           item: { qty: item.qty, name: item.nameSnapshot, modifiers: item.modifiers.map((m) => m.nameSnapshot), notes: item.notes, course: item.course },
           reason,
+          buzzerNo: item.session.buzzerNo,
         }),
       );
     }
@@ -311,6 +382,12 @@ export type KdsTicket = {
   roundNo: number;
   createdAt: Date;
   notes: string | null;
+  /** Αριθμός βομβητή του πελάτη (αν πήρε): όταν γίνει «ΕΤΟΙΜΟ», αυτός χτυπά. */
+  buzzerNo: number | null;
+  customerName: string | null;
+  source: SessionSource;
+  /** Η παραγγελία έχει ήδη πληρωθεί (ροή self-service: πρώτα πληρωμή, μετά ετοιμασία). */
+  paid: boolean;
   items: {
     id: number;
     qty: number;
@@ -347,6 +424,10 @@ export async function getKdsTickets(stationId?: number | null): Promise<KdsTicke
         roundNo: o.roundNo,
         createdAt: o.createdAt,
         notes: o.notes,
+        buzzerNo: o.session.buzzerNo,
+        customerName: o.session.customerName,
+        source: o.session.source,
+        paid: o.session.status === "closed",
         items: [],
       };
       map.set(o.id, t);
@@ -403,19 +484,28 @@ export async function setItemStatus(itemId: number, status: "preparing" | "ready
   return row;
 }
 
-/** «Bump»: όλα τα είδη ενός γύρου (για έναν σταθμό) γίνονται έτοιμα. */
-export async function bumpOrder(orderId: number, stationId?: number | null) {
+/**
+ * «Bump»: όλα τα είδη ενός γύρου (για έναν σταθμό) γίνονται έτοιμα.
+ * Επιστρέφει αν ΟΛΗ η παραγγελία είναι πια έτοιμη (όλοι οι σταθμοί) και τον βομβητή της: τότε χτυπά ο βομβητής.
+ */
+export async function bumpOrder(orderId: number, stationId?: number | null): Promise<{ sessionId: number; allReady: boolean; buzzerNo: number | null; name: string } | null> {
   const db = await getDb();
   const where = stationId
     ? and(eq(schema.orderItems.orderId, orderId), eq(schema.orderItems.printStationId, stationId), inArray(schema.orderItems.status, ["sent", "preparing"]))
     : and(eq(schema.orderItems.orderId, orderId), inArray(schema.orderItems.status, ["sent", "preparing"]));
   await db.update(schema.orderItems).set({ status: "ready", readyAt: new Date() }).where(where);
   emit({ type: "kds.changed" });
-  const o = await db.query.orders.findFirst({ where: eq(schema.orders.id, orderId) });
-  if (o) {
-    emit({ type: "session.changed", sessionId: o.sessionId });
-    await refreshSessionReadiness(o.sessionId);
-  }
+  const o = await db.query.orders.findFirst({ where: eq(schema.orders.id, orderId), with: { session: { with: { table: true, items: { columns: { status: true } } } } } });
+  if (!o) return null;
+  emit({ type: "session.changed", sessionId: o.sessionId });
+  await refreshSessionReadiness(o.sessionId);
+  const live = o.session.items.filter((i) => i.status !== "voided");
+  return {
+    sessionId: o.sessionId,
+    allReady: live.length > 0 && live.every((i) => i.status === "ready" || i.status === "served"),
+    buzzerNo: o.session.buzzerNo,
+    name: o.session.table ? o.session.table.name : o.session.label ?? `#${o.sessionId}`,
+  };
 }
 
 /** Όλα τα είδη μιας συνεδρίας γίνονται «έτοιμα» (π.χ. από το ταμείο, για ειδοποίηση πελάτη QR). */
