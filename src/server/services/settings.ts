@@ -20,7 +20,7 @@ export const DEFAULT_SETTINGS: VenueSettings = {
   taxOffice: "",
   address: "",
   phone: "",
-  email: "",
+  email: "info@nidovillage.gr",
   courses: 1,
 };
 

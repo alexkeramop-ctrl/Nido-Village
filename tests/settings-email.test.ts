@@ -11,7 +11,7 @@ beforeAll(async () => {
 describe("email καταστήματος", () => {
   it("είναι κενό μέχρι να το συμπληρώσει ο διαχειριστής και αποθηκεύεται χωρίς να χαθούν τα υπόλοιπα στοιχεία", async () => {
     const before = await getSettings();
-    expect(before.email).toBe("");
+    expect(before.email).toBe("info@nidovillage.gr");
     expect(before.phone).toBe("694 627 3127");
     await saveSettings({ email: "info@example.com" });
     const after = await getSettings();

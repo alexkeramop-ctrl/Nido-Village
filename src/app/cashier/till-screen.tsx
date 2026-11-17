@@ -277,11 +277,11 @@ export function TillScreen({
       </div>
 
       {/* Η γραμμή του πλέγματος έχει σταθερό ύψος (minmax(0,1fr)) ώστε κάθε στήλη να κυλά μόνη της και το «Ολοκλήρωση» να μένει ορατό. */}
-      <div className="flex-1 min-h-0 lg:grid lg:grid-cols-[8.5rem_minmax(0,1fr)_22rem] lg:grid-rows-[minmax(0,1fr)]">
-        {/* Κατηγορίες: κάθετη στήλη (tablet/υπολογιστής) ή οριζόντια γραμμή (κινητό) */}
+      <div className="flex-1 min-h-0 grid grid-cols-[6.75rem_minmax(0,1fr)] lg:grid-cols-[8.5rem_minmax(0,1fr)_22rem] lg:grid-rows-[minmax(0,1fr)]">
+        {/* Κατηγορίες: πάντα κάθετη στήλη στο πλάι. Στο κινητό μένει κολλημένη και κυλά μόνη της, δίπλα στα είδη. */}
         <nav
           aria-label="Κατηγορίες"
-          className="flex lg:flex-col gap-1.5 overflow-x-auto lg:overflow-x-hidden lg:overflow-y-auto p-2 border-b lg:border-b-0 lg:border-r border-line bg-white/40 sticky top-12 lg:static z-20 backdrop-blur-xl touch"
+          className="flex flex-col gap-1.5 overflow-x-hidden overflow-y-auto p-1.5 lg:p-2 border-r border-line bg-white/40 sticky top-12 self-start max-h-[calc(100dvh-8.5rem)] lg:static lg:self-auto lg:max-h-none z-20 backdrop-blur-xl touch"
         >
           <CategoryButton label="Συχνά" color="#b08a3e" active={catId === TOP} onClick={() => setCatId(TOP)} />
           {menu.map((c) => (
@@ -294,7 +294,7 @@ export function TillScreen({
           {shown.length === 0 ? (
             <p className="text-sm text-ink-3 p-6 text-center">{menu.length === 0 ? "Το μενού είναι κενό. Πρόσθεσε είδη από τη Διαχείριση → Μενού." : "Η κατηγορία δεν έχει είδη."}</p>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2">
+            <div className="grid grid-cols-1 min-[380px]:grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2">
               {shown.map(({ product: p, color }) => {
                 const off = unavailable.has(p.id);
                 const inCart = qtyByProduct.get(p.id) ?? 0;
@@ -608,7 +608,7 @@ function CategoryButton({ label, color, active, onClick }: { label: string; colo
       type="button"
       aria-pressed={active}
       onClick={onClick}
-      className={`shrink-0 lg:w-full rounded-xl border px-3 py-2 lg:px-2 lg:py-3 text-sm lg:text-[13px] font-semibold text-left flex items-center gap-2 transition lg:min-h-12 ${
+      className={`shrink-0 w-full rounded-xl border px-1.5 py-2.5 lg:px-2 lg:py-3 text-[12px] lg:text-[13px] font-semibold text-left flex items-center gap-1.5 lg:gap-2 transition min-h-12 ${
         active ? "bg-ink text-white border-ink" : "bg-white/70 text-ink-2 border-line hover:bg-white"
       }`}
     >
