@@ -1,6 +1,7 @@
 import { requirePageUser } from "@/server/page-auth";
-import { financeMonth, financeYear } from "@/server/services/finance";
+import { financeMonth, financeYear, unpaidInvoices } from "@/server/services/finance";
 import { listSuppliers } from "@/server/services/inventory";
+import { invoiceFeatures } from "@/server/services/invoice-files";
 import { todayAthens } from "@/server/services/reports";
 import { MONTH_RE } from "@/components/admin/events/dates";
 import { FinanceView } from "./finance-view";
@@ -13,6 +14,15 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
   const today = todayAthens();
   const raw = Array.isArray(sp.m) ? sp.m[0] : sp.m;
   const month = raw && MONTH_RE.test(raw) ? raw : today.slice(0, 7);
-  const [data, year, suppliers] = await Promise.all([financeMonth(month), financeYear(month), listSuppliers()]);
-  return <FinanceView data={data} year={year} today={today} suppliers={suppliers.map((s) => ({ id: s.id, name: s.name }))} />;
+  const [data, year, suppliers, unpaid, features] = await Promise.all([financeMonth(month), financeYear(month), listSuppliers(), unpaidInvoices(today), invoiceFeatures()]);
+  return (
+    <FinanceView
+      data={data}
+      year={year}
+      today={today}
+      unpaid={unpaid}
+      features={features}
+      suppliers={suppliers.map((s) => ({ id: s.id, name: s.name, vatNumber: s.vatNumber }))}
+    />
+  );
 }

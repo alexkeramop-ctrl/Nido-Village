@@ -20,7 +20,8 @@ const nextConfig: NextConfig = {
   // Σε serverless (Vercel) τα migrations και η εικόνα του seed διαβάζονται από το δίσκο: να μπουν στο bundle.
   outputFileTracingIncludes: { "/**": ["./drizzle/**/*", "./src/db/seed-assets/**/*"] },
   // Ανέβασμα εικόνας χάρτη (έως 3MB) μέσω server action: το προεπιλεγμένο όριο είναι 1MB.
-  experimental: { serverActions: { bodySizeLimit: "4mb" } },
+  // Συνημμένα τιμολογίων έως 10MB (/api/invoices/*): το proxy κρατά στη μνήμη έως 10MB από προεπιλογή και θα έκοβε το αρχείο.
+  experimental: { serverActions: { bodySizeLimit: "4mb" }, proxyClientMaxBodySize: "12mb" },
 };
 
 export default nextConfig;

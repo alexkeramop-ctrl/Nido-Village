@@ -37,7 +37,8 @@ export function DateGR({
   return (
     <span className="flex items-center gap-1">
       {name && <input type="hidden" name={name} value={`${y}-${pad(m)}-${pad(d)}`} />}
-      <select aria-label="Ημέρα" className={`${cls} w-auto`} value={d} onChange={(e) => set(y, m, Number(e.target.value))}>
+      {/* «!»: η .input (globals.css, εκτός layer) ορίζει width:100% και νικά το απλό w-auto — τότε ο μήνας στριμώχνεται σε ένα βελάκι. */}
+      <select aria-label="Ημέρα" className={`${cls} w-auto! shrink-0`} value={d} onChange={(e) => set(y, m, Number(e.target.value))}>
         {Array.from({ length: daysIn(y, m) }, (_, i) => i + 1).map((x) => (
           <option key={x} value={x}>
             {x}
@@ -51,7 +52,7 @@ export function DateGR({
           </option>
         ))}
       </select>
-      <select aria-label="Έτος" className={`${cls} w-auto`} value={y} onChange={(e) => set(Number(e.target.value), m, d)}>
+      <select aria-label="Έτος" className={`${cls} w-auto! shrink-0`} value={y} onChange={(e) => set(Number(e.target.value), m, d)}>
         {years.map((x) => (
           <option key={x} value={x}>
             {x}

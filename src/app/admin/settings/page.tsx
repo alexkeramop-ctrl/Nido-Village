@@ -1,18 +1,26 @@
 import { Badge } from "@/components/ui";
 import { InfoBox, PageHeader, Section } from "@/components/admin/common";
 import { fmtDateTime } from "@/components/admin/format";
+import { headers } from "next/headers";
+import { requestOrigin } from "@/server/origin";
 import { requirePageUser } from "@/server/page-auth";
 import { publisherStatus } from "@/server/cloud/publisher";
 import { listVatRates } from "@/server/services/catalog";
+import { driveFlash, driveStatus, googleRedirectUri } from "@/server/services/google-drive";
+import { aiConfigured, invoiceModel } from "@/server/services/invoice-ai";
 import { getSettings } from "@/server/services/settings";
+import { GoogleDriveSection } from "./google-drive-section";
 import { SettingsForm } from "./settings-form";
 import { VatTable } from "./vat-table";
 
 export const dynamic = "force-dynamic";
 
-export default async function SettingsPage() {
+export default async function SettingsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requirePageUser("admin");
-  const [settings, vatRates] = await Promise.all([getSettings(), listVatRates()]);
+  const [settings, vatRates, drive, sp, h] = await Promise.all([getSettings(), listVatRates(), driveStatus(), searchParams, headers()]);
+  // Ίδιος κανόνας με τα /api/google/*: το URI που δείχνουμε είναι ακριβώς αυτό που στέλνεται στη Google.
+  const redirectUri = googleRedirectUri(requestOrigin(h));
+  const driveKey = Array.isArray(sp.drive) ? sp.drive[0] : sp.drive;
   const cloud = publisherStatus();
   const mode = process.env.NIDO_MODE === "cloud" ? "cloud" : "store";
   return (
@@ -44,6 +52,7 @@ export default async function SettingsPage() {
             </InfoBox>
           </div>
         </Section>
+        <GoogleDriveSection status={drive} redirectUri={redirectUri} flash={driveFlash(driveKey, redirectUri)} ai={{ configured: aiConfigured(), model: invoiceModel() }} />
         <Section title="Φορολογικό">
           <div className="space-y-3 text-sm">
             <div className="flex items-center gap-2">
