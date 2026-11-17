@@ -9,6 +9,10 @@ import { WEEKDAYS_SHORT, longDateLabel, monthLabel, shiftMonth, weekdayMon, type
 import { CANCELLED_CHIP, EVENT_STATUS_TONE, EVENT_TYPE_CHIP, EVENT_TYPE_DOT, SCOPES, timeRange, type CalendarScope } from "@/components/admin/events/meta";
 import { packageByKey } from "@/components/admin/events/party";
 import type { AreaOption, EventRow } from "@/components/admin/events/types";
+import { payBadge, type BirthdayRow, type PayBadge } from "@/components/admin/bookings/meta";
+import { BirthdaysSection } from "@/components/admin/bookings/birthdays";
+import { EventPaymentsModal } from "@/components/admin/bookings/event-payments";
+import { formatPhone, telHref, whatsappHref } from "@/lib/phone";
 import type { EventStatus, EventType } from "@/db/schema";
 import { deleteEventAction, setEventStatusAction } from "./actions";
 import { EventForm } from "./event-form";
@@ -17,6 +21,17 @@ type ModalState = { mode: "new"; date: string } | { mode: "edit"; event: EventRo
 
 const MAX_CHIPS = 3;
 
+/** Αίτημα από τη φόρμα του site που περιμένει απάντηση. */
+const isWebRequest = (ev: EventRow) => ev.source === "website" && ev.status === "inquiry";
+
+/** Χρώμα της μικρής ετικέτας πληρωμής πάνω στα chips του ημερολογίου (λευκό φόντο για να ξεχωρίζει σε κάθε χρώμα). */
+const PAY_PILL: Record<PayBadge["tone"], string> = {
+  ok: "bg-white/85 text-ok",
+  warn: "bg-white/85 text-warn",
+  danger: "bg-white/85 text-danger",
+  neutral: "bg-white/85 text-ink-2",
+};
+
 export function EventsCalendar({
   scope,
   month,
@@ -24,9 +39,13 @@ export function EventsCalendar({
   grid,
   events,
   upcoming,
+  requests,
+  birthdays,
   areas,
   typeLabels,
   statusLabels,
+  isAdmin,
+  venueName,
 }: {
   scope: CalendarScope;
   month: string;
@@ -34,13 +53,20 @@ export function EventsCalendar({
   grid: MonthGrid;
   events: EventRow[];
   upcoming: EventRow[];
+  /** Αιτήματα από το site που περιμένουν απάντηση (όλες οι ημερομηνίες από σήμερα). */
+  requests: EventRow[];
+  /** Γενέθλια που πλησιάζουν (μόνο στο ημερολόγιο των πάρτι). */
+  birthdays: BirthdayRow[];
   areas: AreaOption[];
   typeLabels: Record<EventType, string>;
   statusLabels: Record<EventStatus, string>;
+  isAdmin: boolean;
+  venueName: string;
 }) {
   const runner = useActionRunner();
   const { run, pending, toastElement } = runner;
   const [modal, setModal] = useState<ModalState>(null);
+  const [paying, setPaying] = useState<EventRow | null>(null);
   const [modalSeq, setModalSeq] = useState(0);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
@@ -69,6 +95,26 @@ export function EventsCalendar({
   const remove = (ev: EventRow) => {
     if (!window.confirm(`Διαγραφή της εκδήλωσης «${ev.title}» (${fmtIsoDate(ev.date)});`)) return;
     run(() => deleteEventAction(ev.id), { success: "Η εκδήλωση διαγράφηκε" });
+  };
+
+  /** Ετικέτα πληρωμής: «Εξοφλημένο», «Προκαταβολή ✓ · υπόλοιπο X €», «Χωρίς προκαταβολή». */
+  const payBadgeOf = (ev: EventRow) => {
+    const b = payBadge(ev.status, ev.pay);
+    return b ? (
+      <span data-testid="pay-badge" data-pay={ev.pay.state}>
+        <Badge tone={b.tone}>{b.label}</Badge>
+      </span>
+    ) : null;
+  };
+  const phoneLink = (phone: string) => {
+    const tel = telHref(phone);
+    return tel ? (
+      <a href={tel} className="num underline decoration-dotted underline-offset-2 hover:text-ink">
+        {formatPhone(phone)}
+      </a>
+    ) : (
+      <span className="num">{phone}</span>
+    );
   };
 
   const conf = SCOPES[scope];
@@ -103,6 +149,76 @@ export function EventsCalendar({
           </>
         }
       />
+
+      {requests.length > 0 && (
+        <section className="card border-2 border-dashed border-brand/50 print:hidden" data-testid="web-requests" aria-label="Αιτήματα από το site">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-line">
+            <h2 className="font-semibold">
+              🌐 Αιτήματα από το site <span className="text-ink-3 font-normal num">· {requests.length}</span>
+            </h2>
+            <span className="text-xs text-ink-3">Ήρθαν από τη φόρμα του nidovillage.gr. Πάρε τηλέφωνο τον πελάτη και επιβεβαίωσε ή ακύρωσε.</span>
+          </div>
+          <ul className="divide-y divide-line">
+            {requests.map((ev) => {
+              const tel = telHref(ev.customerPhone);
+              const wa = whatsappHref(ev.customerPhone);
+              return (
+                <li key={ev.id} className="px-4 py-3 flex flex-col lg:flex-row lg:items-center gap-2 lg:gap-4" data-event-id={ev.id}>
+                  <div className="lg:w-32 shrink-0 flex lg:block items-baseline gap-2">
+                    <div className="font-semibold num">
+                      {WEEKDAYS_SHORT[weekdayMon(ev.date)]} {fmtIsoDate(ev.date)}
+                    </div>
+                    <div className="text-xs text-ink-3 num">{timeRange(ev)}</div>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="font-medium break-words">{ev.customerName || ev.title}</span>
+                      <Badge>
+                        <span className={`inline-block h-2 w-2 rounded-full mr-1 ${EVENT_TYPE_DOT[ev.type]}`} />
+                        {typeLabels[ev.type]}
+                      </Badge>
+                      <Badge tone="brand">🌐 Αίτημα από site</Badge>
+                    </div>
+                    <div className="text-xs text-ink-3 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                      {ev.type === "party" && ev.party ? (
+                        <span className="num">
+                          {ev.party.kids ?? 0} παιδιά · {ev.party.adults ?? 0} ενήλικες
+                        </span>
+                      ) : (
+                        <span className="num">{ev.guests} άτομα</span>
+                      )}
+                      {ev.customerPhone && <span>{phoneLink(ev.customerPhone)}</span>}
+                      {ev.customerEmail && <span className="break-all">{ev.customerEmail}</span>}
+                    </div>
+                    {ev.notes && <div className="text-xs text-ink-2 mt-1 whitespace-pre-line break-words line-clamp-4">{ev.notes}</div>}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 shrink-0">
+                    {tel && (
+                      <a href={tel} className="btn-secondary btn-sm" aria-label={`Κλήση ${ev.customerName}`}>
+                        📞 Κλήση
+                      </a>
+                    )}
+                    {wa && (
+                      <a href={wa} target="_blank" rel="noreferrer" className="btn-secondary btn-sm" aria-label={`WhatsApp ${ev.customerName}`}>
+                        💬 WhatsApp
+                      </a>
+                    )}
+                    <button className="btn-primary btn-sm" disabled={pending} onClick={() => setStatus(ev, "confirmed")} data-testid="request-confirm">
+                      Επιβεβαίωση
+                    </button>
+                    <button className="btn-ghost btn-sm" disabled={pending} onClick={() => setStatus(ev, "cancelled")} data-testid="request-cancel">
+                      Ακύρωση
+                    </button>
+                    <button className="btn-ghost btn-sm" disabled={pending} onClick={() => openEdit(ev)}>
+                      Άνοιγμα
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
 
       <div className="card p-2 flex flex-wrap items-center gap-2 print:hidden">
         <Link href={{ pathname: base, query: { m: prevMonth } }} className="btn-secondary btn-sm num" aria-label="Προηγούμενος μήνας" title={monthLabel(prevMonth)}>
@@ -173,23 +289,40 @@ export function EventsCalendar({
                       {list.map((ev, i) => {
                         const cancelled = ev.status === "cancelled";
                         const overflow = i >= MAX_CHIPS && !isExpanded;
+                        const badge = payBadge(ev.status, ev.pay);
+                        const web = isWebRequest(ev);
                         return (
                           <button
                             key={ev.id}
                             type="button"
                             data-event-id={ev.id}
                             data-status={ev.status}
-                            title={`${timeRange(ev)} ${ev.title} · ${typeLabels[ev.type]} · ${statusLabels[ev.status]}${ev.areaName ? ` · ${ev.areaName}` : ""}`}
+                            data-pay={ev.pay.state}
+                            title={`${timeRange(ev)} ${ev.title} · ${typeLabels[ev.type]} · ${statusLabels[ev.status]}${ev.areaName ? ` · ${ev.areaName}` : ""}${web ? " · Αίτημα από site" : ""}${
+                              badge ? ` · ${badge.label}` : ""
+                            }`}
                             onClick={(e) => {
                               e.stopPropagation();
                               openEdit(ev);
                             }}
-                            className={`${overflow ? "hidden print:block" : "block"} w-full text-left truncate rounded-md border px-1.5 py-0.5 text-[11px] leading-4 font-medium ${
+                            className={`${overflow ? "hidden print:block" : "block"} w-full min-w-0 overflow-hidden text-left rounded-md border px-1.5 py-0.5 text-[11px] leading-4 font-medium ${
                               cancelled ? CANCELLED_CHIP : EVENT_TYPE_CHIP[ev.type]
-                            }`}
+                            } ${web ? "border-dashed border-brand ring-1 ring-brand/40" : ""}`}
                           >
-                            <span className="num">{ev.startTime}</span> {ev.title}
-                            {ev.type === "party" && ev.party?.kids ? <span className="opacity-70"> · {ev.party.kids}π</span> : null}
+                            <span className="block truncate">
+                              <span className="num">{ev.startTime}</span> {ev.title}
+                              {ev.type === "party" && ev.party?.kids ? <span className="opacity-70"> · {ev.party.kids}π</span> : null}
+                            </span>
+                            {web && (
+                              <span className="block truncate" data-testid="chip-web">
+                                <span className="inline-block max-w-full truncate rounded bg-brand px-1 align-top text-[10px] font-semibold leading-[14px] text-white">🌐 Αίτημα από site</span>
+                              </span>
+                            )}
+                            {badge && (
+                              <span className="block truncate" data-testid="chip-pay">
+                                <span className={`inline-block max-w-full truncate rounded px-1 align-top text-[10px] font-semibold leading-[14px] ${PAY_PILL[badge.tone]}`}>{badge.short}</span>
+                              </span>
+                            )}
                           </button>
                         );
                       })}
@@ -235,7 +368,8 @@ export function EventsCalendar({
                       {typeLabels[ev.type]}
                     </Badge>
                     <Badge tone={EVENT_STATUS_TONE[ev.status]}>{statusLabels[ev.status]}</Badge>
-                    {ev.depositPaid && <Badge tone="ok">Προκαταβολή ✓</Badge>}
+                    {isWebRequest(ev) && <Badge tone="brand">🌐 Αίτημα από site</Badge>}
+                    {payBadgeOf(ev)}
                   </div>
                   <div className="text-xs text-ink-3 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
                     {ev.type === "party" && ev.party ? (
@@ -259,16 +393,23 @@ export function EventsCalendar({
                     {(ev.customerName || ev.customerPhone) && (
                       <span>
                         {ev.customerName}
-                        {ev.customerPhone && <span className="num"> · {ev.customerPhone}</span>}
+                        {ev.customerPhone && <> · {phoneLink(ev.customerPhone)}</>}
                       </span>
                     )}
                     <span>
-                      <Money cents={ev.priceCents} />
-                      {ev.depositCents > 0 && (
+                      Τιμή <Money cents={ev.priceCents} />
+                      {ev.pay.paidCents > 0 ? (
                         <>
                           {" "}
-                          (προκ. <Money cents={ev.depositCents} />)
+                          · εισπράχθηκαν <Money cents={ev.pay.paidCents} />
                         </>
+                      ) : (
+                        ev.depositCents > 0 && (
+                          <>
+                            {" "}
+                            (συμφωνημένη προκ. <Money cents={ev.depositCents} />)
+                          </>
+                        )
                       )}
                     </span>
                   </div>
@@ -289,6 +430,9 @@ export function EventsCalendar({
                       Ακύρωση
                     </button>
                   )}
+                  <button className="btn-secondary btn-sm" disabled={pending} onClick={() => setPaying(ev)} data-testid="upcoming-pay">
+                    💶 Πληρωμές
+                  </button>
                   <button className="btn-ghost btn-sm" disabled={pending} onClick={() => openEdit(ev)}>
                     Επεξεργασία
                   </button>
@@ -304,6 +448,15 @@ export function EventsCalendar({
         )}
       </Section>
 
+      {scope === "parties" && <BirthdaysSection rows={birthdays} venueName={venueName} className="print:hidden" />}
+
+      <EventPaymentsModal
+        event={paying ? { id: paying.id, title: paying.title, date: paying.date, depositCents: paying.depositCents } : null}
+        today={today}
+        isAdmin={isAdmin}
+        onClose={() => setPaying(null)}
+      />
+
       <EventForm
         key={modalSeq}
         open={modal !== null}
@@ -316,6 +469,8 @@ export function EventsCalendar({
         allowedTypes={conf.types}
         defaultType={conf.newType}
         runner={runner}
+        today={today}
+        isAdmin={isAdmin}
         onSaved={() => setModal(null)}
       />
     </div>

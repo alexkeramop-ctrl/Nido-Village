@@ -6,6 +6,7 @@ import { packageByKey } from "@/components/admin/events/party";
 import { fmtIsoDate } from "@/components/admin/format";
 import { requirePageUser } from "@/server/page-auth";
 import { publisherStatus } from "@/server/cloud/publisher";
+import { bookingsDueSummary } from "@/server/services/booking-payments";
 import { EVENT_STATUS_LABEL, EVENT_TYPE_LABEL, upcomingEvents } from "@/server/services/events";
 import { financeMonth } from "@/server/services/finance";
 import { listIngredients } from "@/server/services/inventory";
@@ -29,7 +30,7 @@ function greeting() {
 export default async function AdminOverviewPage() {
   const user = await requirePageUser("manager", "admin");
   const isAdmin = user.role === "admin";
-  const [dash, ingredients, stations, events, pickup] = await Promise.all([todayDashboard(), listIngredients(), listStations(), upcomingEvents(30, 100), listPickupBoard()]);
+  const [dash, ingredients, stations, events, pickup, due] = await Promise.all([todayDashboard(), listIngredients(), listStations(), upcomingEvents(30, 100), listPickupBoard(), bookingsDueSummary()]);
   const fin = isAdmin ? await financeMonth(dash.today.slice(0, 7)) : null;
   const cloud = publisherStatus();
   const low = ingredients.filter((i) => i.low);
@@ -89,6 +90,20 @@ export default async function AdminOverviewPage() {
         <Tile label="Κουζίνα & μπαρ" value={String(dash.pendingKitchen)} sub="είδη σε αναμονή" accent={dash.pendingKitchen > 8 ? "rose" : undefined} href="/kds" />
         <Tile label="Παραγγελίες QR" value={String(pickup.length)} sub={pickup.length ? `${pickup.filter((p) => p.status === "ready").length} έτοιμες για παραλαβή` : "καμία σε αναμονή"} href="/admin/qr" accent={pickup.length ? "amber" : undefined} />
       </div>
+
+      {/* Κρατήσεις: οφειλές και αιτήματα από το site */}
+      <Link href="/admin/bookings-due" className="glass px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm hover:bg-white/80 transition-colors" data-testid="bookings-due-tile">
+        <span>
+          💰 Οφειλές κρατήσεων: <span className={`font-semibold num ${due.count ? "text-rose-600" : "text-emerald-700"}`}>{eur(due.totalCents)}</span> σε{" "}
+          <span className="num">{due.count}</span> {due.count === 1 ? "κράτηση" : "κρατήσεις"}
+        </span>
+        {due.websiteRequests > 0 && (
+          <span className="rounded-full bg-brand px-2 py-0.5 text-[11px] font-semibold text-white">
+            🌐 {due.websiteRequests} {due.websiteRequests === 1 ? "αίτημα" : "αιτήματα"} από το site
+          </span>
+        )}
+        <span className="ml-auto text-xs text-ink-2">Οφειλές →</span>
+      </Link>
 
       {/* Μήνας: έσοδα / έξοδα */}
       {fin && (

@@ -1,7 +1,7 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Field } from "@/components/ui";
-import { FormModal, InfoBox, Time24, Toggle, formValues, type useActionRunner } from "@/components/admin/common";
+import { FormModal, InfoBox, Time24, formValues, type useActionRunner } from "@/components/admin/common";
 import { centsToInput } from "@/components/admin/format";
 import { parseEuroToCents } from "@/server/money";
 import type { EventStatus, EventType, PartyDetails } from "@/db/schema";
@@ -11,6 +11,10 @@ import { DateGR } from "@/components/admin/date-gr";
 import { ADULT_MENUS, PARTY_EXTRAS, PARTY_MINUTES, PARTY_PACKAGES, addMinutes, isMonToThu, quoteParty } from "@/components/admin/events/party";
 import { Money } from "@/components/ui";
 import type { AreaOption, ConflictRow, EventFormInput, EventRow } from "@/components/admin/events/types";
+import type { CustomerMatch } from "@/components/admin/bookings/meta";
+import { EventPaymentsPanel } from "@/components/admin/bookings/event-payments";
+import { isValidPhone, normalizePhone } from "@/lib/phone";
+import { findCustomerByPhoneAction } from "@/app/admin/customers/actions";
 import { checkConflictsAction, saveEventAction } from "./actions";
 
 type Runner = ReturnType<typeof useActionRunner>;
@@ -34,6 +38,8 @@ export function EventForm({
   allowedTypes,
   defaultType,
   runner,
+  today,
+  isAdmin,
   onSaved,
 }: {
   open: boolean;
@@ -46,6 +52,10 @@ export function EventForm({
   allowedTypes: EventType[];
   defaultType: EventType;
   runner: Pick<Runner, "run" | "pending" | "toast">;
+  /** Σημερινή ημερομηνία (Αθήνα), προεπιλογή στην καταχώρηση πληρωμής. */
+  today: string;
+  /** Μόνο ο διαχειριστής σβήνει πληρωμές. */
+  isAdmin: boolean;
   onSaved: () => void;
 }) {
   const { run, pending, toast } = runner;
@@ -60,6 +70,38 @@ export function EventForm({
   const [endTime, setEndTime] = useState(
     initial?.endTime ?? (defaultType === "party" ? addMinutes("11:00", PARTY_MINUTES) : defaultType === "appointment" ? "19:00" : "16:00"),
   );
+  const [custName, setCustName] = useState(initial?.customerName ?? "");
+  const [custPhone, setCustPhone] = useState(initial?.customerPhone ?? "");
+  const [custEmail, setCustEmail] = useState(initial?.customerEmail ?? "");
+  /** Ο πελάτης του πελατολογίου με το τηλέφωνο που πληκτρολογήθηκε (αν υπάρχει). */
+  const [match, setMatch] = useState<CustomerMatch | null>(null);
+  const lookupSeq = useRef(0);
+  const lookupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /** Τηλέφωνο: μόλις γίνει έγκυρο, ψάχνει τον πελάτη στο πελατολόγιο και τον προτείνει. */
+  function onPhoneChange(value: string) {
+    setCustPhone(value);
+    if (lookupTimer.current) clearTimeout(lookupTimer.current);
+    const seq = ++lookupSeq.current;
+    const phone = normalizePhone(value);
+    if (!isValidPhone(phone)) {
+      setMatch(null);
+      return;
+    }
+    lookupTimer.current = setTimeout(() => {
+      findCustomerByPhoneAction(phone).then((r) => {
+        if (seq === lookupSeq.current) setMatch(r.ok ? r.data : null);
+      });
+    }, 300);
+  }
+  function applyMatch() {
+    if (!match) return;
+    if (match.name) setCustName(match.name);
+    if (match.email) setCustEmail(match.email);
+  }
+  /** Τα στοιχεία της φόρμας διαφέρουν από του πελατολογίου: προτείνεται συμπλήρωση. */
+  const matchDiffers = match !== null && ((match.name !== "" && custName.trim() !== match.name) || (match.email !== null && custEmail.trim().toLowerCase() !== match.email));
+
   const isParty = type === "party";
   /** Γάμοι και βαπτίσεις δεν έχουν ώρα λήξης: κρατούν τον χώρο μέχρι το τέλος της ημέρας. */
   const noEnd = type === "wedding" || type === "christening";
@@ -99,7 +141,6 @@ export function EventForm({
       customerEmail: v.strOrNull("customerEmail"),
       priceCents,
       depositCents,
-      depositPaid: v.bool("depositPaid"),
       menuNotes: v.strOrNull("menuNotes"),
       notes: v.strOrNull("notes"),
       party: isParty ? party : null,
@@ -338,27 +379,50 @@ export function EventForm({
         </Field>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <Field label="Πελάτης">
-          <input name="customerName" className="input" defaultValue={initial?.customerName ?? ""} placeholder="Ονοματεπώνυμο" />
+        <Field label="Τηλέφωνο" hint="Με το τηλέφωνο η κράτηση μπαίνει στο Πελατολόγιο.">
+          <input name="customerPhone" type="tel" inputMode="tel" autoComplete="off" className="input num" value={custPhone} onChange={(e) => onPhoneChange(e.target.value)} placeholder="69…" />
         </Field>
-        <Field label="Τηλέφωνο">
-          <input name="customerPhone" type="tel" className="input num" defaultValue={initial?.customerPhone ?? ""} />
+        <Field label="Πελάτης">
+          <input name="customerName" className="input" value={custName} onChange={(e) => setCustName(e.target.value)} placeholder="Ονοματεπώνυμο" />
         </Field>
       </div>
+      {match && (
+        <div className="rounded-xl bg-brand-soft px-3 py-2 text-sm flex flex-wrap items-center gap-x-3 gap-y-2" data-testid="customer-match">
+          <span className="min-w-0 break-words">
+            📇 Γνωστός πελάτης: <span className="font-semibold">{match.name || "χωρίς όνομα"}</span>
+            <span className="text-ink-2 num">
+              {" "}
+              · {match.bookings} {match.bookings === 1 ? "κράτηση" : "κρατήσεις"}
+            </span>
+            {match.email && <span className="text-ink-2 break-all"> · {match.email}</span>}
+          </span>
+          {matchDiffers ? (
+            <button type="button" className="btn-primary btn-sm ml-auto" onClick={applyMatch} data-testid="customer-match-use">
+              Συμπλήρωση στοιχείων
+            </button>
+          ) : (
+            <span className="ml-auto text-xs text-ok font-semibold">✓ τα στοιχεία ταιριάζουν</span>
+          )}
+        </div>
+      )}
       <Field label="Email">
-        <input name="customerEmail" type="email" className="input" defaultValue={initial?.customerEmail ?? ""} />
+        <input name="customerEmail" type="email" className="input" value={custEmail} onChange={(e) => setCustEmail(e.target.value)} />
       </Field>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:items-end">
-        <Field label="Τιμή (€)">
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Συμφωνημένη τιμή (€)">
           <input name="price" inputMode="decimal" className="input num" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="250,00" />
         </Field>
-        <Field label="Προκαταβολή (€)">
+        <Field label="Συμφωνημένη προκαταβολή (€)">
           <input name="deposit" inputMode="decimal" className="input num" defaultValue={initial ? centsToInput(initial.depositCents) : ""} placeholder="50,00" />
         </Field>
-        <div className="col-span-2 sm:col-span-1 sm:pb-3">
-          <Toggle name="depositPaid" defaultChecked={initial?.depositPaid ?? false} label="Πληρώθηκε η προκαταβολή" />
-        </div>
       </div>
+      {initial ? (
+        <EventPaymentsPanel eventId={initial.id} agreedDepositCents={initial.depositCents} today={today} isAdmin={isAdmin} runner={runner} />
+      ) : (
+        <div className="rounded-xl border border-line bg-surface-3 px-3 py-2 text-xs text-ink-2">
+          💶 Οι πληρωμές (προκαταβολή, εξόφληση) καταχωρούνται μετά την αποθήκευση: άνοιξε ξανά την κράτηση ή πάτησε «Πληρωμές» στη λίστα. Το υπόλοιπο υπολογίζεται αυτόματα.
+        </div>
+      )}
       <Field label={isParty ? "Σημειώσεις μενού (αλλεργίες κ.λπ.)" : type === "appointment" ? "Θέμα ραντεβού" : "Μενού / πακέτο"}>
         <textarea name="menuNotes" className="input" rows={2} defaultValue={initial?.menuNotes ?? ""} placeholder="π.χ. παιδικό μενού, τούρτα, ποτά" />
       </Field>

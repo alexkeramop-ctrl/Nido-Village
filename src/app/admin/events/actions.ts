@@ -12,6 +12,8 @@ function revalidate() {
   revalidatePath("/admin/events");
   revalidatePath("/admin/ceremonies");
   revalidatePath("/admin/parties");
+  revalidatePath("/admin/bookings-due");
+  revalidatePath("/admin/customers");
   revalidatePath("/admin");
 }
 
@@ -42,7 +44,6 @@ export async function saveEventAction(input: EventFormInput) {
         customerEmail: input.customerEmail,
         priceCents: input.priceCents,
         depositCents: input.depositCents,
-        depositPaid: input.depositPaid,
         menuNotes: input.menuNotes,
         notes: input.notes,
         party: input.party,

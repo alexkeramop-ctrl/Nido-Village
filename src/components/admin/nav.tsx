@@ -14,6 +14,8 @@ const GROUPS: { title: string | null; items: Item[] }[] = [
       { href: "/admin/parties", label: "Παιδικά πάρτι", icon: "🎂" },
       { href: "/admin/ceremonies", label: "Γάμοι & Βαπτίσεις", icon: "💍" },
       { href: "/admin/events", label: "Όλες οι εκδηλώσεις", icon: "📅" },
+      { href: "/admin/bookings-due", label: "Οφειλές κρατήσεων", icon: "💰" },
+      { href: "/admin/customers", label: "Πελατολόγιο", icon: "📇" },
     ],
   },
   {
