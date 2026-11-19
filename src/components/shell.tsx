@@ -6,6 +6,7 @@ import { Mark } from "@/components/brand";
 
 const NAV: { href: string; label: string; roles: string[] }[] = [
   { href: "/pda", label: "Παραγγελίες", roles: ["kitchen", "waiter", "cashier", "manager", "admin"] },
+  { href: "/pda/trips", label: "Εκδρομές", roles: ["kitchen", "waiter", "cashier", "manager", "admin"] },
   { href: "/kds", label: "Ενεργές", roles: ["manager", "admin"] },
   { href: "/cashier", label: "Ταμείο", roles: ["cashier", "manager", "admin"] },
   { href: "/admin", label: "Διαχείριση", roles: ["manager", "admin"] },
@@ -20,7 +21,8 @@ export function Shell({ user, children, active, dark = false, title }: { user: S
           <Link href="/" className="mr-2 flex items-center" aria-label="Αρχική">
             <Mark height={30} />
           </Link>
-          {title && <span className={`font-semibold ${dark ? "text-slate-200" : "text-ink"}`}>{title}</span>}
+          {/* Στο κινητό ο τίτλος κρύβεται: το ενεργό κουμπί του μενού δείχνει ήδη πού βρίσκεσαι. */}
+          {title && <span className={`hidden sm:inline font-semibold ${dark ? "text-slate-200" : "text-ink"}`}>{title}</span>}
           <nav className="flex gap-1 ml-auto overflow-x-auto">
             {links.map((l) => (
               <Link
@@ -35,8 +37,8 @@ export function Shell({ user, children, active, dark = false, title }: { user: S
             ))}
           </nav>
           <form action={logoutAction} className="ml-1">
-            <button className={`text-sm px-2 py-1.5 rounded-lg ${dark ? "text-slate-300 hover:bg-dark-3" : "text-ink-2 hover:bg-surface-3"}`} title="Αποσύνδεση">
-              {user.name} ↪
+            <button className={`text-sm px-2 py-1.5 rounded-lg whitespace-nowrap ${dark ? "text-slate-300 hover:bg-dark-3" : "text-ink-2 hover:bg-surface-3"}`} title={`Αποσύνδεση: ${user.name}`} aria-label={`Αποσύνδεση: ${user.name}`}>
+              <span className="hidden sm:inline">{user.name} </span>↪
             </button>
           </form>
         </div>

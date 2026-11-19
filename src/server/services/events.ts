@@ -106,10 +106,11 @@ export async function deleteEvent(id: number, employeeId: number) {
 }
 
 /** Εκδηλώσεις σε διάστημα ημερομηνιών (συμπεριλαμβανομένων), για το ημερολόγιο. */
-export async function listEvents(from: string, to: string, opts: { includeCancelled?: boolean } = {}) {
+export async function listEvents(from: string, to: string, opts: { includeCancelled?: boolean; type?: EventType } = {}) {
   const db = await getDb();
   const conds = [gte(schema.events.date, from), lte(schema.events.date, to)];
   if (!opts.includeCancelled) conds.push(ne(schema.events.status, "cancelled"));
+  if (opts.type) conds.push(eq(schema.events.type, opts.type));
   return db.query.events.findMany({
     where: and(...conds),
     orderBy: [asc(schema.events.date), asc(schema.events.startTime)],

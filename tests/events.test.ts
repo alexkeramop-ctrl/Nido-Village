@@ -41,4 +41,19 @@ describe("events calendar", () => {
     await deleteEvent(party.id, admin.id);
     await expect(deleteEvent(party.id, admin.id)).rejects.toThrow();
   });
+
+  it("filters by type, for the PDA school-trip calendar", async () => {
+    const today = todayAthens();
+    const d = addDays(today, 40);
+    const trip = await upsertEvent({ title: "3ο Δημοτικό Θέρμης", type: "school_trip", date: d, startTime: "10:00", endTime: "13:00", guests: 52, status: "confirmed" }, admin.id);
+    const cancelledTrip = await upsertEvent({ title: "Γυμνάσιο Βασιλικών", type: "school_trip", date: d, startTime: "11:00", endTime: "14:00", guests: 30, status: "cancelled" }, admin.id);
+    const party = await upsertEvent({ title: "Πάρτι Ελένης", type: "party", date: d, startTime: "17:00", endTime: "20:00", guests: 20 }, admin.id);
+
+    const trips = await listEvents(d, d, { type: "school_trip" });
+    expect(trips.map((e) => e.id)).toEqual([trip.id]);
+    expect((await listEvents(d, d, { type: "school_trip", includeCancelled: true })).map((e) => e.id)).toEqual([trip.id, cancelledTrip.id]);
+    expect((await listEvents(d, d)).map((e) => e.id)).toEqual([trip.id, party.id]);
+
+    for (const e of [trip, cancelledTrip, party]) await deleteEvent(e.id, admin.id);
+  });
 });
