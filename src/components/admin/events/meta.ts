@@ -3,8 +3,8 @@ import type { EventStatus, EventType } from "@/db/schema";
 
 export const EVENT_TYPES: EventType[] = ["wedding", "christening", "appointment", "party", "school_trip", "corporate", "other"];
 
-/** Τα τρία ημερολόγια: όλα, γάμοι & βαπτίσεις (με ραντεβού), παιδικά πάρτι. */
-export type CalendarScope = "all" | "ceremonies" | "parties";
+/** Τα ημερολόγια: όλα, γάμοι & βαπτίσεις (με ραντεβού), παιδικά πάρτι, σχολικές εκδρομές. */
+export type CalendarScope = "all" | "ceremonies" | "parties" | "trips";
 export const SCOPES: Record<CalendarScope, { path: string; title: string; subtitle: string; types: EventType[]; newType: EventType; newLabel: string }> = {
   all: {
     path: "/admin/events",
@@ -29,6 +29,14 @@ export const SCOPES: Record<CalendarScope, { path: string; title: string; subtit
     types: ["party"],
     newType: "party",
     newLabel: "+ Νέο πάρτι",
+  },
+  trips: {
+    path: "/admin/trips",
+    title: "Σχολικές εκδρομές",
+    subtitle: "σχολεία και νηπιαγωγεία: ώρες, άτομα, μενού και σημειώσεις",
+    types: ["school_trip"],
+    newType: "school_trip",
+    newLabel: "+ Νέα εκδρομή",
   },
 };
 export const EVENT_STATUSES: EventStatus[] = ["inquiry", "confirmed", "cancelled", "done"];

@@ -13,6 +13,7 @@ const GROUPS: { title: string | null; items: Item[] }[] = [
     items: [
       { href: "/admin/parties", label: "Παιδικά πάρτι", icon: "🎂" },
       { href: "/admin/ceremonies", label: "Γάμοι & Βαπτίσεις", icon: "💍" },
+      { href: "/admin/trips", label: "Σχολικές εκδρομές", icon: "🚌" },
       { href: "/admin/events", label: "Όλες οι εκδηλώσεις", icon: "📅" },
     ],
   },

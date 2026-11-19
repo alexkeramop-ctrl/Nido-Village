@@ -36,6 +36,7 @@ export default async function AdminOverviewPage() {
   const s = dash.summary;
   const parties = events.filter((e) => e.type === "party").slice(0, 5);
   const ceremonies = events.filter((e) => SCOPES.ceremonies.types.includes(e.type)).slice(0, 5);
+  const trips = events.filter((e) => e.type === "school_trip").slice(0, 5);
   const printerIssues = stations.filter((st) => st.enabled && st.lastError);
   const [y, m, d] = dash.today.split("-").map(Number);
   const week = Array.from({ length: 7 }, (_, i) => addDays(dash.today, i - 6));
@@ -73,6 +74,9 @@ export default async function AdminOverviewPage() {
           </Link>
           <Link href="/admin/ceremonies" className="glass-btn">
             💍 Γάμος / βάπτιση
+          </Link>
+          <Link href="/admin/trips" className="glass-btn">
+            🚌 Σχολική εκδρομή
           </Link>
           {isAdmin && (
             <Link href="/admin/finance" className="glass-btn-solid">
@@ -153,7 +157,7 @@ export default async function AdminOverviewPage() {
       )}
 
       {/* Ημερολόγια */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-3">
         <EventList
           title="🎂 Επόμενα παιδικά πάρτι"
           href="/admin/parties"
@@ -184,6 +188,24 @@ export default async function AdminOverviewPage() {
             confirmed: e.status === "confirmed",
           }))}
         />
+        {/* Σε 2 στήλες πιάνει όλο το πλάτος, ώστε να μη μείνει μισή σειρά κενή. */}
+        <div className="lg:col-span-2 2xl:col-span-1">
+          <EventList
+            title="🚌 Επόμενες σχολικές εκδρομές"
+            href="/admin/trips"
+            empty="Καμία εκδρομή τις επόμενες 30 ημέρες."
+            items={trips.map((e) => ({
+              id: e.id,
+              date: e.date,
+              time: e.startTime,
+              title: e.title,
+              sub: [e.guests ? `${e.guests} άτομα` : null, e.area?.name].filter(Boolean).join(" · "),
+              dot: EVENT_TYPE_DOT[e.type],
+              status: EVENT_STATUS_LABEL[e.status],
+              confirmed: e.status === "confirmed",
+            }))}
+          />
+        </div>
       </div>
 
       {/* Λειτουργία */}

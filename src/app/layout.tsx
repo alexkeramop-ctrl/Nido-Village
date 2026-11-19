@@ -1,10 +1,12 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { PwaRegister } from "@/components/pwa";
+import { SITE_NAME, shareMeta, siteUrl } from "@/server/share-meta";
 
 export const metadata: Metadata = {
-  title: "Nido Village",
-  description: "Παραγγελιοληψία, ταμείο και αποθήκη",
+  metadataBase: siteUrl(),
+  title: SITE_NAME,
+  ...shareMeta(SITE_NAME, "Το σύστημα του Nido Village για παραγγελίες, ταμείο και κρατήσεις."),
   manifest: "/manifest.webmanifest",
   applicationName: "Nido Village",
   appleWebApp: { capable: true, statusBarStyle: "default", title: "Nido" },

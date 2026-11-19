@@ -39,7 +39,7 @@ function toRow(e: DbEvent): EventRow {
   };
 }
 
-/** Κοινή σελίδα για τα τρία ημερολόγια (όλα / γάμοι & βαπτίσεις / παιδικά πάρτι). */
+/** Κοινή σελίδα για τα ημερολόγια (όλα / γάμοι & βαπτίσεις / παιδικά πάρτι / σχολικές εκδρομές). */
 export async function renderCalendar(scope: CalendarScope, { searchParams }: SP) {
   await requirePageUser("manager", "admin");
   const sp = await searchParams;

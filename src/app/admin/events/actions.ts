@@ -12,6 +12,8 @@ function revalidate() {
   revalidatePath("/admin/events");
   revalidatePath("/admin/ceremonies");
   revalidatePath("/admin/parties");
+  revalidatePath("/admin/trips");
+  revalidatePath("/pda/trips");
   revalidatePath("/admin");
 }
 

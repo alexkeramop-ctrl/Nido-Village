@@ -29,7 +29,7 @@ function peopleLabel(n: number): string {
 
 /**
  * PDA: ημερολόγιο σχολικών εκδρομών για το προσωπικό.
- * Μόνο ανάγνωση: οι εκδρομές καταχωρούνται στη Διαχείριση › Εκδηλώσεις. Τιμές και προκαταβολές δεν εμφανίζονται εδώ,
+ * Μόνο ανάγνωση: οι εκδρομές καταχωρούνται στη Διαχείριση › Σχολικές εκδρομές (/admin/trips). Τιμές και προκαταβολές δεν εμφανίζονται εδώ,
  * το τηλέφωνο επικοινωνίας μόνο σε υπεύθυνο και διαχειριστή.
  */
 export default async function PdaTripsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -150,7 +150,7 @@ export default async function PdaTripsPage({ searchParams }: { searchParams: Pro
         {monthTrips.length === 0 ? (
           <div className="card p-6 text-center text-ink-2">
             <div className="font-semibold text-ink">Δεν υπάρχουν σχολικές εκδρομές αυτόν τον μήνα</div>
-            <div className="text-sm mt-1">Οι εκδρομές καταχωρούνται από τον υπεύθυνο στη Διαχείριση › Εκδηλώσεις.</div>
+            <div className="text-sm mt-1">Οι εκδρομές καταχωρούνται από τον υπεύθυνο στη Διαχείριση › Σχολικές εκδρομές.</div>
           </div>
         ) : (
           <div className="space-y-3" data-testid="trips-list">
@@ -201,8 +201,8 @@ export default async function PdaTripsPage({ searchParams }: { searchParams: Pro
 
         {canManage && (
           <div className="text-center pb-4">
-            <Link href={{ pathname: "/admin/events", query: { m: month } }} className="text-sm font-medium text-brand-2 underline underline-offset-2">
-              Νέα εκδρομή ή αλλαγή στη Διαχείριση › Εκδηλώσεις
+            <Link href={{ pathname: "/admin/trips", query: { m: month } }} className="text-sm font-medium text-brand-2 underline underline-offset-2">
+              Νέα εκδρομή ή αλλαγή στη Διαχείριση › Σχολικές εκδρομές
             </Link>
           </div>
         )}

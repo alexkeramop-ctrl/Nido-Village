@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { shareMeta } from "@/server/share-meta";
 import Link from "next/link";
 import { getSettings } from "@/server/services/settings";
 import { getPublicOrder } from "@/server/services/public-order";
@@ -9,7 +10,8 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata({ params }: { params: Promise<{ token: string }> }): Promise<Metadata> {
   const { token } = await params;
   const [order, settings] = await Promise.all([getPublicOrder(token), getSettings()]);
-  return { title: order ? `#${order.code} · ${settings.venueName}` : `Παραγγελία · ${settings.venueName}` };
+  const title = order ? `#${order.code} · ${settings.venueName}` : `Παραγγελία · ${settings.venueName}`;
+  return { title, ...shareMeta(title, "Δες πότε είναι έτοιμη η παραγγελία σου για παραλαβή.") };
 }
 
 /** Δημόσια σελίδα κατάστασης παραγγελίας QR. Χωρίς σύνδεση· το token είναι το «κλειδί». */

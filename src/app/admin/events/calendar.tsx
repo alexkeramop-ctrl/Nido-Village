@@ -91,7 +91,7 @@ export function EventsCalendar({
 
       <PageHeader
         title={conf.title}
-        subtitle={`${monthLabel(month)} · ${inMonthCount} ${scope === "parties" ? (inMonthCount === 1 ? "πάρτι" : "πάρτι") : inMonthCount === 1 ? "εγγραφή" : "εγγραφές"} · ${conf.subtitle}`}
+        subtitle={`${monthLabel(month)} · ${inMonthCount} ${scope === "parties" ? "πάρτι" : scope === "trips" ? (inMonthCount === 1 ? "εκδρομή" : "εκδρομές") : inMonthCount === 1 ? "εγγραφή" : "εγγραφές"} · ${conf.subtitle}`}
         actions={
           <>
             <button className="btn-secondary btn-sm" onClick={() => window.print()}>

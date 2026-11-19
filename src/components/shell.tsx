@@ -22,7 +22,8 @@ export function Shell({ user, children, active, dark = false, title, logoutInHea
           <Link href="/" className="mr-2 flex items-center" aria-label="Αρχική">
             <Mark height={30} />
           </Link>
-          {title && <span className={`font-semibold whitespace-nowrap ${dark ? "text-slate-200" : "text-ink"}`}>{title}</span>}
+          {/* Στο κινητό ο τίτλος κρύβεται: το ενεργό κουμπί του μενού δείχνει ήδη πού βρίσκεσαι. */}
+          {title && <span className={`hidden sm:inline font-semibold whitespace-nowrap ${dark ? "text-slate-200" : "text-ink"}`}>{title}</span>}
           <nav aria-label="Κύριο μενού" className="flex gap-1 ml-auto overflow-x-auto min-w-0">
             {links.map((l) => (
               <Link
@@ -38,8 +39,8 @@ export function Shell({ user, children, active, dark = false, title, logoutInHea
           </nav>
           {logoutInHeader ? (
             <form action={logoutAction} className="ml-1">
-              <button className={`text-sm px-2 py-1.5 rounded-lg ${dark ? "text-slate-300 hover:bg-dark-3" : "text-ink-2 hover:bg-surface-3"}`} title="Αποσύνδεση">
-                {user.name} ↪
+              <button className={`text-sm px-2 py-1.5 rounded-lg whitespace-nowrap ${dark ? "text-slate-300 hover:bg-dark-3" : "text-ink-2 hover:bg-surface-3"}`} title={`Αποσύνδεση: ${user.name}`} aria-label={`Αποσύνδεση: ${user.name}`}>
+                <span className="hidden sm:inline">{user.name} </span>↪
               </button>
             </form>
           ) : (
