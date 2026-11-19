@@ -13,7 +13,7 @@ function revalidate() {
   revalidatePath("/admin/ceremonies");
   revalidatePath("/admin/parties");
   revalidatePath("/admin/trips");
-  revalidatePath("/pda/trips");
+  revalidatePath("/pda/calendar");
   revalidatePath("/admin");
 }
 
