@@ -1,6 +1,6 @@
 "use client";
 import { formatEuro } from "@/server/money";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 export function Money({ cents, className = "" }: { cents: number; className?: string }) {
   return <span className={`num ${className}`}>{formatEuro(cents)}</span>;
@@ -30,6 +30,7 @@ export function Modal({
   children: ReactNode;
   wide?: boolean;
 }) {
+  const downOnBackdrop = useRef(false);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -38,9 +39,19 @@ export function Modal({
   }, [open, onClose]);
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/55 backdrop-blur-sm p-0 sm:p-4"
+      // Κλείνει μόνο αν το πάτημα ΞΕΚΙΝΗΣΕ και ΤΕΛΕΙΩΣΕ στο σκούρο φόντο (όχι όταν σέρνεις το ποντίκι από μέσα προς τα έξω).
+      onPointerDown={(e) => {
+        downOnBackdrop.current = e.target === e.currentTarget;
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget && downOnBackdrop.current) onClose();
+        downOnBackdrop.current = false;
+      }}
+    >
       <div
-        className={`bg-surface-2 w-full ${wide ? "sm:max-w-3xl" : "sm:max-w-md"} rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[92vh] flex flex-col`}
+        className={`glass-modal text-ink w-full ${wide ? "sm:max-w-3xl" : "sm:max-w-md"} rounded-t-2xl sm:rounded-2xl max-h-[92vh] flex flex-col`}
         onClick={(e) => e.stopPropagation()}
       >
         {title && (
@@ -65,6 +76,8 @@ export function Numpad({
   mode = "amount",
   submitLabel = "OK",
   disabled,
+  compact = false,
+  maxLength,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -72,6 +85,9 @@ export function Numpad({
   mode?: "pin" | "amount" | "int";
   submitLabel?: string;
   disabled?: boolean;
+  /** Χαμηλότερα πλήκτρα, για να χωρά δίπλα σε άλλα στοιχεία (π.χ. πληρωμή στο ταμείο). */
+  compact?: boolean;
+  maxLength?: number;
 }) {
   const press = (k: string) => {
     if (k === "⌫") return onChange(value.slice(0, -1));
@@ -79,18 +95,20 @@ export function Numpad({
     if (k === "," && (mode !== "amount" || value.includes(","))) return;
     if (mode === "pin" && value.length >= 8) return;
     if (mode === "amount" && value.includes(",") && value.split(",")[1].length >= 2) return;
+    if (maxLength && value.length >= maxLength) return;
     onChange(value + k);
   };
   const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", mode === "amount" ? "," : "C", "0", "⌫"];
   return (
-    <div className="grid grid-cols-3 gap-2 touch">
+    <div className={`grid grid-cols-3 touch ${compact ? "gap-1.5" : "gap-2"}`}>
       {keys.map((k) => (
         <button
           key={k}
           type="button"
           disabled={disabled}
           onClick={() => press(k)}
-          className="btn-secondary text-2xl py-4 rounded-2xl"
+          aria-label={k === "⌫" ? "Σβήσιμο" : k === "C" ? "Καθαρισμός" : k === "," ? "Υποδιαστολή" : undefined}
+          className={`btn-secondary ${compact ? "text-xl! py-2! rounded-xl!" : "text-2xl py-4 rounded-2xl"}`}
         >
           {k}
         </button>

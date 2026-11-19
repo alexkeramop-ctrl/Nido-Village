@@ -6,6 +6,7 @@ import { Badge, EmptyState, Field, Modal, Money, useToast } from "@/components/u
 import { ZoomableFloorMap, isPlaced, type FloorMapImage, type FloorMapTable } from "@/components/floor-map";
 import { formatEuro } from "@/server/money";
 import type { TableShape } from "@/db/schema";
+import type { PlanRoom } from "@/lib/floor-plan";
 import { openTableAction, openTakeawayAction } from "./actions";
 
 export type FloorSessionDto = {
@@ -33,6 +34,7 @@ export type FloorAreaDto = {
   id: number;
   name: string;
   image: FloorMapImage;
+  rooms: PlanRoom[];
   tables: FloorTableDto[];
 };
 
@@ -211,6 +213,7 @@ export function FloorScreen({ areas, takeaway }: { areas: FloorAreaDto[]; takeaw
               <ZoomableFloorMap
                 key={area.id}
                 areaImage={area.image}
+                rooms={area.rooms}
                 tables={markers}
                 onTap={tapTable}
                 footer={

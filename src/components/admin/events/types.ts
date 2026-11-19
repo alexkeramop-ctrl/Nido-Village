@@ -1,5 +1,5 @@
 /** Σειριοποιήσιμοι τύποι για το ημερολόγιο εκδηλώσεων (server page -> client components). */
-import type { EventStatus, EventType } from "@/db/schema";
+import type { EventStatus, EventType, PartyDetails } from "@/db/schema";
 
 export type EventRow = {
   id: number;
@@ -20,6 +20,7 @@ export type EventRow = {
   depositPaid: boolean;
   menuNotes: string | null;
   notes: string | null;
+  party: PartyDetails | null;
 };
 
 export type AreaOption = { id: number; name: string };
@@ -43,6 +44,7 @@ export type EventFormInput = {
   depositPaid: boolean;
   menuNotes: string | null;
   notes: string | null;
+  party: PartyDetails | null;
 };
 
 export type ConflictRow = {

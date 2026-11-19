@@ -1,7 +1,7 @@
 import { asc, eq, isNull, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { omit } from "@/server/util";
-import { decryptPin, encryptPin, hashPin } from "@/server/pin";
+import { decryptPin, encryptPin, hashPin, verifyPin } from "@/server/pin";
 import { audit } from "@/server/audit";
 import type { EmployeeRole } from "@/db/schema";
 
@@ -67,6 +67,13 @@ export async function upsertEmployee(input: { id?: number; name: string; role: E
   const db = await getDb();
   if (input.pin !== undefined && input.pin !== "" && !/^\d{4,8}$/.test(input.pin)) {
     throw new Error("Το PIN πρέπει να έχει 4 έως 8 ψηφία");
+  }
+  // Η σύνδεση γίνεται μόνο με PIN: δύο ενεργοί υπάλληλοι με ίδιο PIN θα έμπαιναν ο ένας ως ο άλλος.
+  if (input.pin) {
+    const others = await db.select({ id: schema.employees.id, pinHash: schema.employees.pinHash }).from(schema.employees).where(isNull(schema.employees.deletedAt));
+    if (others.some((o) => o.id !== input.id && verifyPin(input.pin!, o.pinHash))) {
+      throw new Error("Αυτό το PIN το έχει ήδη άλλος υπάλληλος. Διάλεξε διαφορετικό.");
+    }
   }
   if (input.id) {
     const set: Partial<typeof schema.employees.$inferInsert> = { name: input.name, role: input.role };

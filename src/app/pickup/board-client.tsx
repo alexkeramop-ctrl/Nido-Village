@@ -21,7 +21,7 @@ export function BoardClient({ venueName, rows }: { venueName: string; rows: Row[
     <div className="flex-1 min-h-screen flex flex-col bg-dark text-white select-none">
       <header className="flex items-center justify-between px-6 py-4 border-b border-dark-3">
         <div className="flex items-center gap-3">
-          <span className="rounded-2xl bg-cream px-3 py-1.5 flex items-center"><Mark height={34} /></span>
+          <span className="flex items-center"><Mark height={34} tone="light" /></span>
           <span className="text-2xl font-black tracking-tight text-brand-soft">{venueName}</span>
           <span className="text-lg text-slate-300 font-medium">Παραλαβές</span>
         </div>
@@ -40,8 +40,8 @@ export function BoardClient({ venueName, rows }: { venueName: string; rows: Row[
           ) : (
             <ul className="grid grid-cols-2 xl:grid-cols-3 gap-3 content-start">
               {preparing.map((r) => (
-                <li key={r.sessionId} className="rounded-2xl bg-dark-3/70 border border-white/10 px-3 py-4 text-center">
-                  <div className="text-5xl md:text-6xl font-black num leading-none text-slate-100">{r.code}</div>
+                <li key={r.sessionId} className="rounded-2xl bg-dark-3/70 border border-white/10 px-3 py-4 text-center" aria-label={r.buzzerNo !== null ? `Βομβητής ${r.buzzerNo}` : `Παραγγελία ${r.code}`}>
+                  <BoardNumber buzzerNo={r.buzzerNo} code={r.code} className="text-slate-100" />
                   <div className="text-lg md:text-xl text-slate-300 mt-2 truncate">{firstName(r.customerName) || "—"}</div>
                 </li>
               ))}
@@ -58,8 +58,8 @@ export function BoardClient({ venueName, rows }: { venueName: string; rows: Row[
           ) : (
             <ul className="grid grid-cols-2 xl:grid-cols-3 gap-3 content-start">
               {ready.map((r) => (
-                <li key={r.sessionId} className="rounded-2xl bg-emerald-600 text-white px-3 py-4 text-center shadow-lg">
-                  <div className="text-5xl md:text-6xl font-black num leading-none">{r.code}</div>
+                <li key={r.sessionId} className="rounded-2xl bg-emerald-600 text-white px-3 py-4 text-center shadow-lg" aria-label={r.buzzerNo !== null ? `Βομβητής ${r.buzzerNo}` : `Παραγγελία ${r.code}`}>
+                  <BoardNumber buzzerNo={r.buzzerNo} code={r.code} />
                   <div className="text-lg md:text-xl mt-2 truncate text-emerald-50">{firstName(r.customerName) || "—"}</div>
                 </li>
               ))}
@@ -68,7 +68,32 @@ export function BoardClient({ venueName, rows }: { venueName: string; rows: Row[
         </section>
       </main>
 
-      <footer className="px-6 py-2 text-center text-sm text-slate-500 border-t border-dark-3">Όταν δεις τον κωδικό σου στα «Έτοιμες», πέρασε από το ταμείο για παραλαβή και πληρωμή.</footer>
+      <footer className="px-6 py-2 text-center text-sm text-slate-500 border-t border-dark-3">
+        🔔 = αριθμός βομβητή · # = κωδικός παραγγελίας από κινητό. Όταν χτυπήσει ο βομβητής σου ή δεις τον αριθμό σου στα «Έτοιμες», πέρασε να παραλάβεις.
+      </footer>
+    </div>
+  );
+}
+
+/** Ο μεγάλος αριθμός της κάρτας: ο βομβητής αν έχει δοθεί, αλλιώς ο κωδικός της παραγγελίας QR. */
+function BoardNumber({ buzzerNo, code, className = "" }: { buzzerNo: number | null; code: string; className?: string }) {
+  return (
+    <div className={`text-5xl md:text-6xl font-black num leading-none ${className}`}>
+      {buzzerNo !== null ? (
+        <>
+          <span aria-hidden className="text-3xl md:text-4xl align-middle mr-1">
+            🔔
+          </span>
+          {buzzerNo}
+        </>
+      ) : (
+        <>
+          <span aria-hidden className="text-3xl md:text-4xl align-middle opacity-70">
+            #
+          </span>
+          {code}
+        </>
+      )}
     </div>
   );
 }

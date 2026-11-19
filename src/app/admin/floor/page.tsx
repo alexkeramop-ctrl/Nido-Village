@@ -5,7 +5,7 @@ import { FloorEditor, type EditorArea } from "./floor-editor";
 
 export const dynamic = "force-dynamic";
 
-/** Διαχείριση: επεξεργάσιμος χάρτης χώρου (θέσεις τραπεζιών πάνω σε εικόνα). */
+/** Διαχείριση: επεξεργάσιμη κάτοψη χώρου (δωμάτια και θέσεις τραπεζιών· προαιρετικά φωτογραφία φόντου). */
 export default async function FloorPage() {
   await requirePageUser("manager", "admin");
   const areas = (await listAreas(true)).filter((a) => a.active);
@@ -21,6 +21,7 @@ export default async function FloorPage() {
         id: a.id,
         name: a.name,
         image: a.mapAssetId === null ? null : (images.get(a.mapAssetId) ?? null),
+        rooms: a.plan?.rooms ?? [],
         tables: a.tables
           .filter((t) => t.active)
           .map((t) => ({ id: t.id, name: t.name, seats: t.seats, posX: t.posX, posY: t.posY, shape: t.shape })),

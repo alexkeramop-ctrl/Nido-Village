@@ -1,33 +1,47 @@
 @import "tailwindcss";
 
 @theme {
-  --color-surface: #f4f4f2;
-  --color-surface-2: #ffffff;
-  --color-surface-3: #e9e9e5;
-  --color-ink: #16181d;
-  --color-ink-2: #4b5160;
-  --color-ink-3: #8a8f9c;
-  --color-line: #dcdcd6;
+  /* Ανοιχτόχρωμο glass: απαλό κρεμ/φασκόμηλο φόντο, λευκές ημιδιάφανες επιφάνειες, σκούρα κείμενα. */
+  --color-surface: rgba(255, 255, 255, 0.35);
+  --color-surface-2: rgba(255, 255, 255, 0.6);
+  --color-surface-3: rgba(47, 74, 44, 0.08);
+  --color-ink: #1f2a22;
+  --color-ink-2: #4a5649;
+  --color-ink-3: #7b857a;
+  --color-line: rgba(31, 42, 34, 0.12);
   --color-brand: #2f4a2c;
   --color-brand-2: #24391f;
-  --color-brand-soft: #e4ebdc;
+  --color-brand-soft: rgba(47, 74, 44, 0.12);
   --color-brand-light: #9dbd8b;
   --color-gold: #b08a3e;
   --color-gold-soft: #f3e8d0;
   --color-cream: #f8f7f2;
   --color-warn: #b45309;
-  --color-warn-soft: #fdebd0;
+  --color-warn-soft: rgba(251, 191, 104, 0.28);
   --color-danger: #b91c1c;
-  --color-danger-soft: #fde2e2;
+  --color-danger-soft: rgba(239, 68, 68, 0.13);
   --color-ok: #15803d;
-  --color-ok-soft: #dcf5e3;
+  --color-ok-soft: rgba(34, 197, 94, 0.15);
   --color-dark: #121a13;
   --color-dark-2: #1b261d;
   --color-dark-3: #2c3a2e;
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
-  --radius-card: 14px;
+  --radius-card: 18px;
 }
 
+html {
+  background: #eef0e6;
+  color-scheme: light;
+}
+body {
+  color: var(--color-ink);
+  background:
+    radial-gradient(55% 45% at 5% 0%, rgba(157, 189, 139, 0.55), transparent 60%),
+    radial-gradient(45% 40% at 98% 4%, rgba(240, 196, 140, 0.5), transparent 60%),
+    radial-gradient(60% 55% at 75% 100%, rgba(120, 180, 170, 0.4), transparent 60%),
+    linear-gradient(160deg, #f4f1e8 0%, #e9efe1 50%, #eef2ea 100%);
+  background-attachment: fixed;
+}
 html,
 body {
   height: 100%;
@@ -46,13 +60,13 @@ body {
   @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-base font-semibold transition active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none touch;
 }
 .btn-primary {
-  @apply btn bg-brand text-white hover:bg-brand-2;
+  @apply btn bg-brand text-white shadow-md hover:bg-brand-2;
 }
 .btn-secondary {
-  @apply btn bg-surface-3 text-ink hover:bg-line;
+  @apply btn bg-white/70 text-ink border border-line backdrop-blur-md hover:bg-white;
 }
 .btn-danger {
-  @apply btn bg-danger text-white hover:bg-red-800;
+  @apply btn bg-red-500/85 text-white hover:bg-red-500;
 }
 .btn-ghost {
   @apply btn bg-transparent text-ink-2 hover:bg-surface-3;
@@ -64,11 +78,18 @@ body {
   @apply px-6 py-4 text-lg rounded-2xl;
 }
 .card {
-  @apply bg-surface-2 rounded-[var(--radius-card)] border border-line shadow-sm;
+  @apply bg-surface-2 rounded-[var(--radius-card)] border border-line backdrop-blur-xl;
+  box-shadow: 0 8px 32px rgba(31, 42, 34, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 .input {
-  @apply w-full rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-base text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft;
+  @apply w-full rounded-xl border border-line bg-white/75 px-3 py-2.5 text-base text-ink outline-none placeholder:text-ink-3 focus:border-brand focus:ring-2 focus:ring-brand-soft;
 }
+select.input option,
+select option {
+  background: #ffffff;
+  color: #1f2a22;
+}
+
 .label {
   @apply block text-sm font-medium text-ink-2 mb-1;
 }
@@ -86,4 +107,115 @@ body {
 }
 .num {
   font-variant-numeric: tabular-nums;
+}
+
+/* ───────── Glass (σκούρο πράσινο φόντο με θολά «παράθυρα») ───────── */
+.glass-page {
+  @apply relative isolate text-ink;
+}
+.glass {
+  @apply rounded-2xl border border-white/80 bg-white/55 backdrop-blur-xl;
+  box-shadow: 0 8px 32px rgba(31, 42, 34, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+.glass-hi {
+  @apply rounded-2xl border border-white/90 bg-white/80 backdrop-blur-xl;
+  box-shadow: 0 10px 36px rgba(31, 42, 34, 0.12), inset 0 1px 0 rgba(255, 255, 255, 1);
+}
+.glass-btn {
+  @apply inline-flex items-center justify-center gap-1.5 rounded-xl border border-white/90 bg-white/65 px-3 py-2 text-sm font-semibold text-ink backdrop-blur-md transition hover:bg-white active:scale-[0.98] disabled:opacity-40;
+}
+.glass-btn-solid {
+  @apply inline-flex items-center justify-center gap-1.5 rounded-xl bg-brand px-3 py-2 text-sm font-semibold text-white shadow-md transition hover:bg-brand-2 active:scale-[0.98];
+}
+.glass-label {
+  @apply text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-3;
+}
+.glass-table th {
+  @apply text-left text-[11px] uppercase tracking-wider text-ink-3 font-semibold px-3 py-2 border-b border-line;
+}
+.glass-table td {
+  @apply px-3 py-2.5 border-b border-black/5 align-middle;
+}
+
+/* Παράθυρα (modals): πιο «συμπαγές» γυαλί για να διαβάζονται οι φόρμες. */
+.glass-modal {
+  background: rgba(250, 250, 246, 0.94);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 30px 80px rgba(31, 42, 34, 0.25);
+}
+
+/* Εκτύπωση: πάντα λευκό χαρτί με μαύρα γράμματα. */
+@media print {
+  :root {
+    --color-surface: #fff;
+    --color-surface-2: #fff;
+    --color-surface-3: #f1f1ee;
+    --color-ink: #16181d;
+    --color-ink-2: #4b5160;
+    --color-ink-3: #6b7080;
+    --color-line: #d8d8d2;
+    --color-brand: #2f4a2c;
+    --color-brand-2: #24391f;
+    --color-brand-soft: #e4ebdc;
+    --color-ok: #15803d;
+    --color-warn: #b45309;
+    --color-danger: #b91c1c;
+  }
+  html,
+  body {
+    background: #fff !important;
+    color: #16181d;
+  }
+  .card,
+  .glass,
+  .glass-hi {
+    backdrop-filter: none !important;
+    box-shadow: none !important;
+  }
+}
+
+/* Ταξινομήσιμες στήλες */
+th.th-sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+th.th-sortable:hover {
+  color: var(--color-ink);
+}
+th.th-sortable::after {
+  content: "↕";
+  margin-left: 0.3em;
+  opacity: 0.3;
+  font-size: 0.9em;
+}
+th.th-sortable[aria-sort="ascending"]::after {
+  content: "▲";
+  opacity: 0.9;
+}
+th.th-sortable[aria-sort="descending"]::after {
+  content: "▼";
+  opacity: 0.9;
+}
+@media print {
+  th.th-sortable::after {
+    content: none;
+  }
+}
+
+/* Συρτάρι μενού στο κινητό */
+@keyframes nav-drawer-in {
+  from {
+    transform: translateX(-100%);
+  }
+}
+.nav-drawer {
+  animation: nav-drawer-in 0.22s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-drawer {
+    animation: none;
+  }
 }

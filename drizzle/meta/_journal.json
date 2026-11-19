@@ -29,6 +29,27 @@
       "when": 1790689795793,
       "tag": "0003_staff_bars_packs_events",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794902200138,
+      "tag": "0004_finance_parties",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794908993297,
+      "tag": "0005_floor_plan",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794911321985,
+      "tag": "0006_registers_buzzer",
+      "breakpoints": true
     }
   ]
 }

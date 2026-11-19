@@ -1,25 +1,48 @@
 /**
  * Δείγμα δεδομένων για το Nido Village. Τρέχει μόνο αν η βάση είναι άδεια.
  */
-import fs from "node:fs";
-import path from "node:path";
+import { randomInt } from "node:crypto";
 import { sql } from "drizzle-orm";
 import type { Db } from "./index";
 import * as schema from "./schema";
+import type { PlanRoom } from "@/lib/floor-plan";
 import { encryptPin, hashPin } from "@/server/pin";
+import { ensureDefaultRegisters } from "@/server/services/registers";
+
+/** PIN του demo. Χωρίς NIDO_ADMIN_PIN: τα γνωστά 1234/4444/… . Με NIDO_ADMIN_PIN: αυτό για τον διαχειριστή, τυχαία για τους άλλους. */
+export function demoPins(adminPin: string | undefined) {
+  const custom = !!adminPin;
+  if (custom && !/^\d{4,8}$/.test(adminPin)) throw new Error("[nido] Το NIDO_ADMIN_PIN πρέπει να είναι 4–8 ψηφία.");
+  const used = new Set<string>([custom ? adminPin! : "1234"]);
+  return {
+    custom,
+    admin: custom ? adminPin! : "1234",
+    next(demo: string) {
+      if (!custom) return demo;
+      let pin: string;
+      do pin = String(randomInt(100000, 1000000));
+      while (used.has(pin));
+      used.add(pin);
+      return pin;
+    },
+  };
+}
 
 export async function seedDemo(db: Db): Promise<boolean> {
   const existing = await db.select({ n: sql<number>`count(*)::int` }).from(schema.employees);
   if ((existing[0]?.n ?? 0) > 0) return false;
 
   const emp = (name: string, role: schema.EmployeeRole, pin: string) => ({ name, role, pinHash: hashPin(pin), pinEncrypted: encryptPin(pin) });
+  // Online (π.χ. pda.nidovillage.gr): με NIDO_ADMIN_PIN ο διαχειριστής παίρνει αυτό το PIN και οι υπόλοιποι demo υπάλληλοι
+  // τυχαία PIN (φαίνονται στο /admin/staff), ώστε να μη δουλεύουν τα γνωστά demo PIN 1234/4444/… .
+  const pins = demoPins(process.env.NIDO_ADMIN_PIN);
   await db.insert(schema.employees).values([
-    emp("Αλέξης", "admin", "1234"),
-    emp("Ελένη", "manager", "4444"),
-    emp("Νίκος", "cashier", "2222"),
-    emp("Μαρία", "waiter", "1111"),
-    emp("Κατερίνα (Μπαρ Κέντρο)", "waiter", "3333"),
-    emp("Γιώργος (Μπαρ Παιδική)", "waiter", "5555"),
+    emp("Αλέξης", "admin", pins.admin),
+    emp("Ελένη", "manager", pins.next("4444")),
+    emp("Νίκος", "cashier", pins.next("2222")),
+    emp("Μαρία", "waiter", pins.next("1111")),
+    emp("Κατερίνα (Μπαρ Κέντρο)", "waiter", pins.next("3333")),
+    emp("Γιώργος (Μπαρ Παιδική)", "waiter", pins.next("5555")),
   ]);
 
   const [vat13, vat24] = await db
@@ -42,48 +65,44 @@ export async function seedDemo(db: Db): Promise<boolean> {
     ])
     .returning();
 
-  // Χάρτης χώρου: η αεροφωτογραφία του Nido Village ως φόντο (918x1713).
-  let mapAssetId: number | null = null;
-  try {
-    const img = fs.readFileSync(path.join(process.cwd(), "src", "db", "seed-assets", "nido-aerial.jpg"));
-    const [asset] = await db
-      .insert(schema.assets)
-      .values({ kind: "map", mime: "image/jpeg", data: img.toString("base64"), width: 918, height: 1713 })
-      .returning();
-    mapAssetId = asset.id;
-  } catch {
-    mapAssetId = null;
-  }
-
   // Χώροι: «Κέντρο» (κτίριο, πισίνα, πέργκολες) και «Παιδική» (τραπέζια στον παιδότοπο). Κάθε χώρος έχει το μπαρ του.
+  // Ο χάρτης είναι απλή κάτοψη (χωρίς φωτογραφία): 3 δωμάτια ανά χώρο και τα τραπέζια μέσα τους.
+  const kentroRooms: PlanRoom[] = [
+    { id: "k-sala", name: "Σάλα", x: 30, y: 40, w: 600, h: 520, color: "sand" },
+    { id: "k-pergola", name: "Πέργκολα", x: 670, y: 40, w: 300, h: 520, color: "sky" },
+    { id: "k-veranta", name: "Βεράντα", x: 30, y: 600, w: 940, h: 360, color: "sage" },
+  ];
+  const paidikiRooms: PlanRoom[] = [
+    { id: "p-paidotopos", name: "Παιδότοπος", x: 30, y: 40, w: 600, h: 540, color: "rose" },
+    { id: "p-pergola", name: "Πέργκολα", x: 670, y: 40, w: 300, h: 540, color: "lavender" },
+    { id: "p-kipos", name: "Κήπος", x: 30, y: 620, w: 940, h: 340, color: "sage" },
+  ];
   const [kentro, paidiki] = await db
     .insert(schema.areas)
     .values([
-      { name: "Κέντρο", sort: 1, mapAssetId, barStationId: barKentro.id },
-      { name: "Παιδική", sort: 2, mapAssetId, barStationId: barPaidiki.id },
+      { name: "Κέντρο", sort: 1, mapAssetId: null, barStationId: barKentro.id, plan: { rooms: kentroRooms } },
+      { name: "Παιδική", sort: 2, mapAssetId: null, barStationId: barPaidiki.id, plan: { rooms: paidikiRooms } },
     ])
     .returning();
-  const pos = (x: number, y: number) => ({ posX: Math.round((x / 918) * 1000), posY: Math.round((y / 1713) * 1000) });
-  const kentroPos: [number, number][] = [
-    [372, 250], [372, 300], [372, 350], [400, 235], [455, 235], [510, 235],
-    [560, 250], [560, 300], [560, 350], [420, 365], [470, 370], [520, 365],
-    [590, 285], [590, 335], [345, 300], [345, 355],
-    [275, 405], [275, 450], [275, 495], [275, 540],
-    [440, 545], [490, 550], [540, 550], [590, 545], [630, 500],
-    [320, 605], [370, 615], [420, 625], [470, 630], [520, 630],
-  ];
-  const paidikiPos: [number, number][] = [
-    [530, 690], [565, 690], [600, 690], [635, 690],
-    [530, 725], [565, 725], [600, 725], [635, 725],
-    [530, 760], [565, 760], [600, 760], [635, 760],
-    [300, 1020], [300, 1070], [300, 1120],
-    [420, 1165], [475, 1170], [530, 1175], [585, 1180], [640, 1185],
-  ];
+  /** Θέσεις σε πλέγμα μέσα σε ένα δωμάτιο (αφήνει χώρο πάνω για την ετικέτα του). */
+  const gridIn = (room: PlanRoom, count: number, cols: number) => {
+    const rows = Math.ceil(count / cols);
+    const top = room.y + 70;
+    const h = room.h - 90;
+    return Array.from({ length: count }, (_, i) => ({
+      posX: Math.round(room.x + ((i % cols) + 0.5) * (room.w / cols)),
+      posY: Math.round(top + (Math.floor(i / cols) + 0.5) * (h / rows)),
+    }));
+  };
+  // Κέντρο: Κ1–Κ16 στη Σάλα, Κ17–Κ20 (μακρόστενα) στην Πέργκολα, Κ21–Κ30 στη Βεράντα.
+  const kentroPos = [...gridIn(kentroRooms[0], 16, 4), ...gridIn(kentroRooms[1], 4, 1), ...gridIn(kentroRooms[2], 10, 5)];
+  // Παιδική: Π1–Π12 στον Παιδότοπο, Π13–Π15 (μακρόστενα) στην Πέργκολα, Π16–Π20 στον Κήπο.
+  const paidikiPos = [...gridIn(paidikiRooms[0], 12, 4), ...gridIn(paidikiRooms[1], 3, 1), ...gridIn(paidikiRooms[2], 5, 5)];
   const tableRows: (typeof schema.tables.$inferInsert)[] = [];
   for (let i = 1; i <= 30; i++)
-    tableRows.push({ areaId: kentro.id, name: `Κ${i}`, seats: i % 5 === 0 ? 6 : 4, sort: i, shape: i > 16 && i <= 20 ? "wide" : "round", ...pos(...kentroPos[i - 1]) });
+    tableRows.push({ areaId: kentro.id, name: `Κ${i}`, seats: i % 5 === 0 ? 6 : 4, sort: i, shape: i > 16 && i <= 20 ? "wide" : "round", ...kentroPos[i - 1] });
   for (let i = 1; i <= 20; i++)
-    tableRows.push({ areaId: paidiki.id, name: `Π${i}`, seats: 6, sort: i, shape: i > 12 && i <= 15 ? "wide" : "round", ...pos(...paidikiPos[i - 1]) });
+    tableRows.push({ areaId: paidiki.id, name: `Π${i}`, seats: 6, sort: i, shape: i > 12 && i <= 15 ? "wide" : "round", ...paidikiPos[i - 1] });
   await db.insert(schema.tables).values(tableRows);
 
   // Κατηγορίες: ροφήματα στο μπαρ (του χώρου), φαγητά στην κουζίνα.
@@ -346,9 +365,71 @@ export async function seedDemo(db: Db): Promise<boolean> {
 
   await db.insert(schema.settings).values({
     key: "venue",
-    value: { venueName: "Nido Village", vatNumber: "", taxOffice: "", address: "", phone: "", courses: 1 },
+    value: { venueName: "Nido Village", vatNumber: "", taxOffice: "", address: "Βασιλικά Θέρμης, 57006", phone: "694 627 3127", courses: 1 },
   });
-  // Demo χρήστης για το online dashboard συνεταίρων (/partners).
-  await db.insert(schema.partnerUsers).values({ name: "Συνεταίρος (demo)", email: "partner@nido.demo", passwordHash: hashPin("nido-demo-2026") });
+  // Demo χρήστης για το online dashboard συνεταίρων (/partners). Όχι όταν το σύστημα στήνεται online με δικό του PIN.
+  if (!pins.custom) {
+    await db.insert(schema.partnerUsers).values({ name: "Συνεταίρος (demo)", email: "partner@nido.demo", passwordHash: hashPin("nido-demo-2026") });
+  }
+  // Ταμεία self-service: «Ταμείο 1» και «Ταμείο 2» (ο διαχειριστής προσθέτει/μετονομάζει από τις Ρυθμίσεις).
+  await ensureDefaultRegisters(db);
   return true;
+}
+
+/**
+ * Καθαρό ξεκίνημα (online): μόνο τα απαραίτητα για να δουλέψει το σύστημα.
+ * Ένας διαχειριστής με το NIDO_ADMIN_PIN, συντελεστές ΦΠΑ, σταθμοί εκτύπωσης και στοιχεία καταστήματος.
+ * Ένας προεπιλεγμένος χώρος «Κατάστημα» (χωρίς τραπέζια/δωμάτια), ώστε η Κάτοψη και τα Τραπέζια να δουλεύουν αμέσως.
+ * Μενού, αποθήκη, τραπέζια, δωμάτια και προσωπικό τα περνά ο ίδιος ο διαχειριστής.
+ */
+export async function seedClean(db: Db): Promise<boolean> {
+  const existing = await db.select({ n: sql<number>`count(*)::int` }).from(schema.employees);
+  if ((existing[0]?.n ?? 0) > 0) return false;
+  const pin = process.env.NIDO_ADMIN_PIN;
+  if (!pin || !/^\d{4,8}$/.test(pin)) throw new Error("[nido] Το NIDO_ADMIN_PIN πρέπει να είναι 4–8 ψηφία.");
+  await db.insert(schema.employees).values({ name: "Διαχειριστής", role: "admin", pinHash: hashPin(pin), pinEncrypted: encryptPin(pin) });
+  await db.insert(schema.vatRates).values([
+    { name: "Μειωμένος 13%", ratePct: "13.00", mydataCategory: 2 },
+    { name: "Κανονικός 24%", ratePct: "24.00", mydataCategory: 1 },
+    { name: "Υπερμειωμένος 6%", ratePct: "6.00", mydataCategory: 3 },
+    { name: "Απαλλαγή 0%", ratePct: "0.00", mydataCategory: 7 },
+  ]);
+  const [kitchen, bar] = await db
+    .insert(schema.printStations)
+    .values([
+      { name: "Κουζίνα", kind: "kitchen", driver: "console", sort: 1 },
+      { name: "Μπαρ", kind: "bar", driver: "console", sort: 2 },
+      { name: "Ταμείο", kind: "receipt", driver: "console", sort: 3, drawerKick: true },
+    ])
+    .returning();
+  // Ένας χώρος για να ξεκινήσει ο υπεύθυνος: τραπέζια από τη σελίδα «Τραπέζια», δωμάτια από την «Κάτοψη».
+  await db.insert(schema.areas).values({ name: "Κατάστημα", sort: 1, barStationId: bar.id });
+  // Κατηγορίες μενού (χωρίς είδη): ροφήματα στο μπαρ, φαγητά στην κουζίνα.
+  await db.insert(schema.categories).values([
+    { name: "Καφέδες", sort: 1, color: "#6b4f2a", printStationId: bar.id },
+    { name: "Ροφήματα", sort: 2, color: "#a16207", printStationId: bar.id },
+    { name: "Αναψυκτικά & Τσάι", sort: 3, color: "#1d4ed8", printStationId: bar.id },
+    { name: "Smoothies", sort: 4, color: "#be185d", printStationId: bar.id },
+    { name: "Μπύρες", sort: 5, color: "#ca8a04", printStationId: bar.id },
+    { name: "Ποτά", sort: 6, color: "#6d28d9", printStationId: bar.id },
+    { name: "Brunch", sort: 7, color: "#ea580c", printStationId: kitchen.id },
+    { name: "Hot dog", sort: 8, color: "#dc2626", printStationId: kitchen.id },
+    { name: "Burger", sort: 9, color: "#b45309", printStationId: kitchen.id },
+    { name: "Πίτσα", sort: 10, color: "#e11d48", printStationId: kitchen.id },
+    { name: "Club Sandwich", sort: 11, color: "#15803d", printStationId: kitchen.id },
+    { name: "Παγωτά", sort: 12, color: "#7c3aed", printStationId: bar.id },
+  ]);
+  await db.insert(schema.settings).values({
+    key: "venue",
+    value: { venueName: "Nido Village", vatNumber: "", taxOffice: "", address: "Βασιλικά Θέρμης, 57006", phone: "694 627 3127", courses: 1 },
+  });
+  await ensureDefaultRegisters(db);
+  return true;
+}
+
+/** Τι φορτώνεται σε άδεια βάση: NIDO_SEED=clean|demo. Προεπιλογή: καθαρό όταν υπάρχει NIDO_ADMIN_PIN (online), αλλιώς demo. */
+export function seedMode(): "clean" | "demo" {
+  const m = process.env.NIDO_SEED;
+  if (m === "clean" || m === "demo") return m;
+  return process.env.NIDO_ADMIN_PIN ? "clean" : "demo";
 }

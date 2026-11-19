@@ -1,4 +1,5 @@
 "use client";
+import { DateGR } from "@/components/admin/date-gr";
 import { useState } from "react";
 import { Field, Money } from "@/components/ui";
 import { Section, TableWrap, useActionRunner } from "@/components/admin/common";
@@ -89,7 +90,7 @@ export function ReceiveTab({ ingredients, suppliers, today, receipts }: { ingred
               <input className="input" value={docNumber} onChange={(e) => setDocNumber(e.target.value)} placeholder="π.χ. ΤΔΑ-1234" />
             </Field>
             <Field label="Ημερομηνία">
-              <input type="date" className="input num" value={docDate} onChange={(e) => setDocDate(e.target.value)} required />
+              <DateGR value={docDate} onChange={setDocDate} />
             </Field>
           </div>
 

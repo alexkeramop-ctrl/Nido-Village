@@ -13,5 +13,5 @@ export async function generateMetadata(): Promise<Metadata> {
 /** Δημόσια σελίδα παραγγελίας από QR (take away). Χωρίς σύνδεση. Το ?t=<τραπέζι> αγνοείται προς το παρόν. */
 export default async function OrderPage() {
   const [menu, settings] = await Promise.all([getPublicMenu(), getSettings()]);
-  return <OrderClient menu={menu} venueName={settings.venueName} />;
+  return <OrderClient menu={menu} venueName={settings.venueName} contact={{ venueName: settings.venueName, address: settings.address, phone: settings.phone, email: settings.email }} />;
 }

@@ -1,0 +1,31 @@
+// Cloudflare Workers: POS στο pda.nidovillage.gr. Build: npm run build:cf · Deploy: npm run deploy:cf
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "nido-pda-app",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "services": [{ "binding": "WORKER_SELF_REFERENCE", "service": "nido-pda-app" }],
+  "vars": {
+    "NIDO_MODE": "store"
+  },
+  "observability": { "enabled": true },
+  // Ο κώδικας τρέχει κοντά στη βάση (Φρανκφούρτη): κάθε σελίδα κάνει πολλά ερωτήματα, οπότε γλιτώνει τις διαδρομές.
+  "placement": { "mode": "smart" },
+  // Το Cloudflare δημιουργεί μόνο του την εγγραφή DNS και το πιστοποιητικό για το pda.nidovillage.gr.
+  "routes": [{ "pattern": "pda.nidovillage.gr", "custom_domain": true }],
+  // Βάση: Neon (project morning-glade-19550702, Frankfurt) μέσω Hyperdrive "nido-pda".
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "a494b336a83c480e9e6e022af2d15def",
+      // Μόνο για τοπικές δοκιμές (wrangler dev / OpenNext deploy). Online χρησιμοποιείται το Hyperdrive.
+      "localConnectionString": "postgres://nido:nido@127.0.0.1:5432/nido"
+    }
+  ]
+  // Μυστικά (Settings → Variables and Secrets, τύπος Secret): NIDO_SECRET, NIDO_ADMIN_PIN.
+}

@@ -3,12 +3,13 @@ import { and, asc, desc, eq, gte, lte, ne } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { audit } from "@/server/audit";
 import { emit } from "@/server/events";
-import type { EventStatus, EventType } from "@/db/schema";
+import type { EventStatus, EventType, PartyDetails } from "@/db/schema";
 import { addDays, todayAthens } from "./reports";
 
 export const EVENT_TYPE_LABEL: Record<EventType, string> = {
   wedding: "Γάμος",
   christening: "Βάφτιση",
+  appointment: "Ραντεβού",
   party: "Πάρτι",
   school_trip: "Σχολική εκδρομή",
   corporate: "Εταιρικό",
@@ -47,7 +48,26 @@ export type EventInput = {
   depositPaid?: boolean;
   menuNotes?: string | null;
   notes?: string | null;
+  party?: PartyDetails | null;
 };
+
+/** Καθαρισμός στοιχείων πάρτι (μόνο γνωστά πεδία, λογικά όρια). */
+function cleanParty(p: PartyDetails | null | undefined): PartyDetails | null {
+  if (!p) return null;
+  const str = (v: unknown, n = 120) => (typeof v === "string" ? v.trim().slice(0, n) : "");
+  const int = (v: unknown, max: number) => (typeof v === "number" && Number.isFinite(v) ? Math.min(max, Math.max(0, Math.round(v))) : 0);
+  return {
+    childName: str(p.childName),
+    childAge: p.childAge == null ? null : int(p.childAge, 18),
+    kids: int(p.kids, 500),
+    adults: int(p.adults, 500),
+    package: str(p.package, 40),
+    adultMenu: str(p.adultMenu, 40),
+    extras: Array.isArray(p.extras) ? p.extras.filter((x) => typeof x === "string").slice(0, 10) : [],
+    theme: str(p.theme),
+    cake: str(p.cake),
+  };
+}
 
 export async function upsertEvent(input: EventInput, employeeId: number) {
   const db = await getDb();
@@ -75,6 +95,7 @@ export async function upsertEvent(input: EventInput, employeeId: number) {
     depositPaid: input.depositPaid ?? false,
     menuNotes: input.menuNotes?.trim() || null,
     notes: input.notes?.trim() || null,
+    party: input.type === "party" ? cleanParty(input.party) : null,
     updatedAt: new Date(),
   };
   const [row] = input.id
@@ -100,6 +121,8 @@ export async function deleteEvent(id: number, employeeId: number) {
   const db = await getDb();
   const e = await db.query.events.findFirst({ where: eq(schema.events.id, id) });
   if (!e) throw new Error("Η εκδήλωση δεν βρέθηκε");
+  // Οι κινήσεις εσόδων/εξόδων μένουν (ιστορικό), απλώς αποσυνδέονται από την εκδήλωση.
+  await db.update(schema.financeEntries).set({ eventId: null }).where(eq(schema.financeEntries.eventId, id));
   await db.delete(schema.events).where(eq(schema.events.id, id));
   await audit(db, employeeId, "event_delete", "event", id, { title: e.title, date: e.date });
   emit({ type: "catalog.changed" });

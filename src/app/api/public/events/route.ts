@@ -1,10 +1,14 @@
 import { subscribe, type NidoEvent } from "@/server/events";
+import { isWorker } from "@/server/cf";
+import { sseUnsupported } from "@/server/sse";
 import { getSessionIdForToken } from "@/server/services/public-order";
 
 export const dynamic = "force-dynamic";
 
 /** Δημόσιο SSE για τη σελίδα κατάστασης παραγγελίας QR: στέλνει μόνο αλλαγές της δικής της συνεδρίας. */
 export async function GET(req: Request) {
+  // Cloudflare Workers: δεν μπορεί ένα αίτημα να γράφει στο stream άλλου· οι οθόνες περνούν σε polling.
+  if (isWorker) return sseUnsupported();
   const url = new URL(req.url);
   const token = url.searchParams.get("token") ?? "";
   const board = url.searchParams.get("board") === "1";

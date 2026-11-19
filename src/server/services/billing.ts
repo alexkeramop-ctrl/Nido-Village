@@ -1,9 +1,11 @@
 /**
- * Λογαριασμός, εκπτώσεις, πληρωμές, κλείσιμο συνεδρίας, ταμειακές βάρδιες.
+ * Λογαριασμός, εκπτώσεις, πληρωμές, κλείσιμο συνεδρίας.
+ * Οι βάρδιες ανά ταμείο είναι στο ./registers.ts· η γρήγορη πώληση του ταμείου στο ./till.ts.
  */
-import { asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
-import { audit } from "@/server/audit";
+import { audit, type DbLike } from "@/server/audit";
+import type { PaymentMethod } from "@/db/schema";
 import { emit } from "@/server/events";
 import { vatIncludedCents } from "@/server/money";
 import { getFiscalProvider } from "@/server/fiscal/provider";
@@ -138,10 +140,79 @@ export async function printBill(sessionId: number, employeeId: number) {
   emit({ type: "floor.changed" });
 }
 
+export type PaymentInput = {
+  method: PaymentMethod;
+  amountCents: number;
+  tenderedCents?: number | null;
+  changeCents?: number;
+  posTransactionId?: string | null;
+};
+
+/** Γράφει πληρωμές (και το ίχνος τους στο ιστορικό) μέσα σε υπάρχουσα συναλλαγή, χρεωμένες σε μια βάρδια ταμείου. */
+export async function insertPaymentsTx(
+  tx: DbLike,
+  input: { sessionId: number; cashSessionId: number | null; payments: PaymentInput[]; employeeId: number; now?: Date },
+) {
+  if (!input.payments.length) return [];
+  const now = input.now ?? new Date();
+  const rows = await tx
+    .insert(schema.payments)
+    .values(
+      input.payments.map((p) => ({
+        sessionId: input.sessionId,
+        cashSessionId: input.cashSessionId,
+        method: p.method,
+        amountCents: p.amountCents,
+        tenderedCents: p.tenderedCents ?? p.amountCents,
+        changeCents: p.changeCents ?? 0,
+        posTransactionId: p.posTransactionId ?? null,
+        employeeId: input.employeeId,
+        createdAt: now,
+      })),
+    )
+    .returning();
+  await tx.insert(schema.auditLog).values(
+    input.payments.map((p) => ({
+      employeeId: input.employeeId,
+      action: "payment",
+      entity: "table_session",
+      entityId: input.sessionId,
+      details: { method: p.method, amountCents: p.amountCents, cashSessionId: input.cashSessionId },
+    })),
+  );
+  return rows.sort((a, b) => a.id - b.id);
+}
+
+export async function closeSessionTx(tx: DbLike, sessionId: number, employeeId: number, now: Date = new Date()) {
+  await tx.update(schema.tableSessions).set({ status: "closed", closedAt: now, closedBy: employeeId }).where(eq(schema.tableSessions.id, sessionId));
+}
+
+/**
+ * Η βάρδια στην οποία χρεώνεται μια πληρωμή.
+ *  - Με ρητό id (ταμείο): πρέπει να είναι ανοιχτή· κλειδώνεται «for share» ώστε να μην κλείσει στη μέση.
+ *  - Χωρίς id (παλιά ροή, tests): η μοναδική ανοιχτή βάρδια αν υπάρχει ακριβώς μία, αλλιώς καμία
+ *    (με δύο ανοιχτά ταμεία δεν μαντεύουμε σε ποιο ανήκει η είσπραξη).
+ */
+export async function resolveCashSessionTx(tx: DbLike, cashSessionId: number | null | undefined): Promise<number | null> {
+  if (cashSessionId === null) return null;
+  if (cashSessionId !== undefined) {
+    const [cs] = await tx
+      .select({ id: schema.cashSessions.id })
+      .from(schema.cashSessions)
+      .where(and(eq(schema.cashSessions.id, cashSessionId), isNull(schema.cashSessions.closedAt)))
+      .for("share");
+    if (!cs) throw new Error("Η βάρδια του ταμείου έχει κλείσει");
+    return cs.id;
+  }
+  const open = await tx.select({ id: schema.cashSessions.id }).from(schema.cashSessions).where(isNull(schema.cashSessions.closedAt)).limit(2);
+  return open.length === 1 ? open[0].id : null;
+}
+
 export async function addPayment(
   sessionId: number,
   input: { method: "cash" | "card" | "other"; amountCents: number; tenderedCents?: number; posTransactionId?: string | null },
   employeeId: number,
+  opts: { cashSessionId?: number | null } = {},
 ) {
   const db = await getDb();
   const s = await getSessionDetail(sessionId);
@@ -154,41 +225,37 @@ export async function addPayment(
   const tendered = input.method === "cash" ? Math.round(input.tenderedCents ?? amount) : amount;
   if (tendered < amount) throw new Error("Τα μετρητά είναι λιγότερα από το ποσό");
   const change = tendered - amount;
-  const cash = await getCurrentCashSession();
 
-  const closedNow = s.totals.dueCents - amount <= 0;
   const result = await db.transaction(async (tx) => {
-    const [p] = await tx
-      .insert(schema.payments)
-      .values({
-        sessionId,
-        cashSessionId: cash?.id ?? null,
-        method: input.method,
-        amountCents: amount,
-        tenderedCents: tendered,
-        changeCents: change,
-        posTransactionId: input.posTransactionId ?? null,
-        employeeId,
-      })
-      .returning();
-    await audit(tx, employeeId, "payment", "table_session", sessionId, { method: input.method, amountCents: amount });
-    if (closedNow) {
-      await tx
-        .update(schema.tableSessions)
-        .set({ status: "closed", closedAt: new Date(), closedBy: employeeId })
-        .where(eq(schema.tableSessions.id, sessionId));
-    }
-    return p;
+    // Κλείδωμα της συνεδρίας: δύο ταμεία δεν μπορούν να εισπράξουν ταυτόχρονα το ίδιο υπόλοιπο.
+    const [locked] = await tx.select({ status: schema.tableSessions.status }).from(schema.tableSessions).where(eq(schema.tableSessions.id, sessionId)).for("update");
+    if (!locked || locked.status === "closed" || locked.status === "cancelled") throw new Error("Η συνεδρία έχει ήδη κλείσει");
+    const [{ paid }] = await tx
+      .select({ paid: sql<number>`coalesce(sum(${schema.payments.amountCents}), 0)::int` })
+      .from(schema.payments)
+      .where(eq(schema.payments.sessionId, sessionId));
+    const due = s.totals.totalCents - paid;
+    if (amount > due) throw new Error("Το ποσό υπερβαίνει το υπόλοιπο");
+    const cashSessionId = await resolveCashSessionTx(tx, opts.cashSessionId);
+    const [payment] = await insertPaymentsTx(tx, {
+      sessionId,
+      cashSessionId,
+      payments: [{ method: input.method, amountCents: amount, tenderedCents: tendered, changeCents: change, posTransactionId: input.posTransactionId ?? null }],
+      employeeId,
+    });
+    const closed = due - amount <= 0;
+    if (closed) await closeSessionTx(tx, sessionId, employeeId);
+    return { payment, closed };
   });
 
-  if (closedNow) await issueReceiptForSession(sessionId, employeeId);
+  if (result.closed) await issueReceiptForSession(sessionId, employeeId);
   emit({ type: "session.changed", sessionId });
   emit({ type: "floor.changed" });
-  return { payment: result, closed: closedNow, changeCents: change };
+  return { payment: result.payment, closed: result.closed, changeCents: change };
 }
 
 /** Καλεί τον πάροχο (ή τον Noop) για απόδειξη 11.1 και τυπώνει μόνο αν εκδόθηκε. */
-async function issueReceiptForSession(sessionId: number, employeeId: number) {
+export async function issueReceiptForSession(sessionId: number, employeeId: number) {
   const db = await getDb();
   const s = await getSessionDetail(sessionId);
   if (!s) return;
@@ -231,7 +298,7 @@ async function issueReceiptForSession(sessionId: number, employeeId: number) {
     if (station) {
       const doc = receiptTicket({
         venueName: settings.venueName,
-        venue: { vatNumber: settings.vatNumber, address: settings.address, phone: settings.phone, taxOffice: settings.taxOffice },
+        venue: { vatNumber: settings.vatNumber, address: settings.address, phone: settings.phone, taxOffice: settings.taxOffice, email: settings.email },
         tableName: s.displayName,
         waiter: s.openedByEmployee.name,
         time: new Date(),
@@ -295,78 +362,3 @@ export async function listRecentClosedSessions(limit = 30) {
     methods: [...new Set(s.payments.map((p) => p.method))],
   }));
 }
-
-/* ---------------------------- Ταμειακές βάρδιες ---------------------------- */
-
-export async function getCurrentCashSession() {
-  const db = await getDb();
-  return db.query.cashSessions.findFirst({ where: isNull(schema.cashSessions.closedAt), orderBy: [desc(schema.cashSessions.id)] });
-}
-
-export async function openCashSession(openingFloatCents: number, employeeId: number) {
-  const db = await getDb();
-  const existing = await getCurrentCashSession();
-  if (existing) throw new Error("Υπάρχει ήδη ανοιχτή βάρδια ταμείου");
-  const [row] = await db
-    .insert(schema.cashSessions)
-    .values({ openedBy: employeeId, openingFloatCents: Math.max(0, Math.round(openingFloatCents)) })
-    .returning();
-  await audit(db, employeeId, "cash_open", "cash_session", row.id, { openingFloatCents });
-  return row;
-}
-
-export async function cashSessionSummary(cashSessionId: number) {
-  const db = await getDb();
-  const cs = await db.query.cashSessions.findFirst({ where: eq(schema.cashSessions.id, cashSessionId) });
-  if (!cs) throw new Error("Η βάρδια δεν βρέθηκε");
-  const rows = await db
-    .select({
-      method: schema.payments.method,
-      total: sql<number>`coalesce(sum(${schema.payments.amountCents}), 0)::int`,
-      count: sql<number>`count(*)::int`,
-    })
-    .from(schema.payments)
-    .where(eq(schema.payments.cashSessionId, cashSessionId))
-    .groupBy(schema.payments.method);
-  const byMethod = Object.fromEntries(rows.map((r) => [r.method, { totalCents: r.total, count: r.count }])) as Record<
-    string,
-    { totalCents: number; count: number }
-  >;
-  const cash = byMethod.cash?.totalCents ?? 0;
-  return {
-    cashSession: cs,
-    byMethod,
-    expectedCashCents: cs.openingFloatCents + cash,
-    totalCents: rows.reduce((n, r) => n + r.total, 0),
-  };
-}
-
-export async function closeCashSession(countedCashCents: number, employeeId: number, notes?: string) {
-  const db = await getDb();
-  const current = await getCurrentCashSession();
-  if (!current) throw new Error("Δεν υπάρχει ανοιχτή βάρδια ταμείου");
-  const summary = await cashSessionSummary(current.id);
-  const [row] = await db
-    .update(schema.cashSessions)
-    .set({
-      closedAt: new Date(),
-      closedBy: employeeId,
-      countedCashCents: Math.round(countedCashCents),
-      expectedCashCents: summary.expectedCashCents,
-      notes: notes ?? null,
-    })
-    .where(eq(schema.cashSessions.id, current.id))
-    .returning();
-  await audit(db, employeeId, "cash_close", "cash_session", row.id, {
-    countedCashCents,
-    expectedCashCents: summary.expectedCashCents,
-    diff: countedCashCents - summary.expectedCashCents,
-  });
-  return { ...summary, cashSession: row };
-}
-
-export async function listCashSessions(limit = 20) {
-  const db = await getDb();
-  return db.query.cashSessions.findMany({ orderBy: [desc(schema.cashSessions.id)], limit });
-}
-

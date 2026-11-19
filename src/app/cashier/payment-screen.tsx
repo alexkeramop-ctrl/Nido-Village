@@ -2,11 +2,11 @@
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import type { PaymentMethod } from "@/db/schema";
-import { Badge, Field, Modal, Money, Numpad, useToast } from "@/components/ui";
+import { Badge, Money, Numpad, useToast } from "@/components/ui";
+import { DiscountModal } from "@/components/ops/discount-modal";
 import { formatEuro, parseEuroToCents } from "@/server/money";
 import type { SessionDto } from "@/components/ops/types";
 import {
-  DISCOUNT_REASONS,
   ITEM_STATUS_LABEL,
   PAYMENT_METHOD_LABEL,
   SESSION_STATUS_LABEL,
@@ -31,7 +31,7 @@ function safeCents(v: string): number | null {
   }
 }
 
-export function PaymentScreen({ session }: { session: SessionDto }) {
+export function PaymentScreen({ session, canDiscount }: { session: SessionDto; canDiscount: boolean }) {
   const { toast, element } = useToast();
   const [pending, start] = useTransition();
   const [discountOpen, setDiscountOpen] = useState(false);
@@ -139,9 +139,13 @@ export function PaymentScreen({ session }: { session: SessionDto }) {
 
         {!closed && !done && (
           <div className="grid grid-cols-2 gap-2 pt-1">
-            <button type="button" className="btn-secondary" disabled={pending || session.items.length === 0} onClick={() => setDiscountOpen(true)}>
-              Έκπτωση
-            </button>
+            {canDiscount ? (
+              <button type="button" className="btn-secondary" disabled={pending || session.items.length === 0} onClick={() => setDiscountOpen(true)}>
+                Έκπτωση
+              </button>
+            ) : (
+              <span className="text-xs text-ink-3 self-center text-center">Έκπτωση: μόνο υπεύθυνος</span>
+            )}
             <button type="button" className="btn-secondary" disabled={pending || session.items.length === 0} onClick={print}>
               Εκτύπωση λογαριασμού
             </button>
@@ -175,16 +179,19 @@ export function PaymentScreen({ session }: { session: SessionDto }) {
 
       {discountOpen && (
         <DiscountModal
-          sessionId={session.id}
           subtotalCents={session.totals.subtotalCents}
           currentCents={session.totals.discountCents}
           currentReason={session.discountReason}
+          pending={pending}
           onClose={() => setDiscountOpen(false)}
-          onDone={(msg) => {
-            setDiscountOpen(false);
-            toast(msg);
-          }}
-          onError={(m) => toast(m, "danger")}
+          onApply={(cents, reason) =>
+            start(async () => {
+              const r = await applyDiscountAction(session.id, cents, reason);
+              if (!r.ok) return toast(r.error, "danger");
+              setDiscountOpen(false);
+              toast(cents > 0 ? "Η έκπτωση εφαρμόστηκε" : "Η έκπτωση αφαιρέθηκε");
+            })
+          }
         />
       )}
       {element}
@@ -327,89 +334,5 @@ function DoneCard({ session, changeCents, onError }: { session: SessionDto; chan
         </button>
       )}
     </div>
-  );
-}
-
-/* ------------------------------- Έκπτωση ------------------------------- */
-
-function DiscountModal({
-  sessionId,
-  subtotalCents,
-  currentCents,
-  currentReason,
-  onClose,
-  onDone,
-  onError,
-}: {
-  sessionId: number;
-  subtotalCents: number;
-  currentCents: number;
-  currentReason: string | null;
-  onClose: () => void;
-  onDone: (msg: string) => void;
-  onError: (m: string) => void;
-}) {
-  const [mode, setMode] = useState<"amount" | "percent">("amount");
-  const [value, setValue] = useState(currentCents ? centsToInput(currentCents) : "");
-  const [reason, setReason] = useState(currentReason ?? "");
-  const [pending, start] = useTransition();
-
-  const pct = Number(value.replace(",", "."));
-  const cents = mode === "amount" ? safeCents(value) : Number.isFinite(pct) && pct >= 0 ? Math.round((subtotalCents * Math.min(100, pct)) / 100) : null;
-  const capped = cents === null ? null : Math.min(cents, subtotalCents);
-  const canApply = capped !== null && capped > 0 && reason.trim().length > 0 && !pending;
-
-  const apply = (amountCents: number, msg: string) =>
-    start(async () => {
-      const r = await applyDiscountAction(sessionId, amountCents, reason.trim());
-      if (!r.ok) return onError(r.error);
-      onDone(msg);
-    });
-
-  return (
-    <Modal open onClose={onClose} title="Έκπτωση">
-      <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-2">
-          <label className={`${mode === "amount" ? "btn-primary" : "btn-secondary"} cursor-pointer`}>
-            <input type="radio" name="discount-mode" className="sr-only" checked={mode === "amount"} onChange={() => setMode("amount")} />
-            Ποσό (€)
-          </label>
-          <label className={`${mode === "percent" ? "btn-primary" : "btn-secondary"} cursor-pointer`}>
-            <input type="radio" name="discount-mode" className="sr-only" checked={mode === "percent"} onChange={() => setMode("percent")} />
-            Ποσοστό (%)
-          </label>
-        </div>
-        <Field label={mode === "amount" ? "Ποσό έκπτωσης (€)" : "Ποσοστό έκπτωσης (%)"}>
-          <input className="input num text-lg" inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} placeholder={mode === "amount" ? "0,00" : "10"} autoFocus />
-        </Field>
-        <div className="text-sm text-ink-2 flex justify-between">
-          <span>Έκπτωση</span>
-          <Money cents={capped ?? 0} className="font-semibold" />
-        </div>
-        <div className="text-sm text-ink-2 flex justify-between">
-          <span>Νέο σύνολο</span>
-          <Money cents={subtotalCents - (capped ?? 0)} className="font-bold" />
-        </div>
-        <div>
-          <span className="label">Αιτιολογία (υποχρεωτική)</span>
-          <div className="flex flex-wrap gap-1.5 mb-2">
-            {DISCOUNT_REASONS.map((r) => (
-              <button key={r} type="button" onClick={() => setReason(r)} className={`chip py-1.5 px-3 ${reason === r ? "bg-brand text-white" : "bg-surface-3 text-ink-2"}`}>
-                {r}
-              </button>
-            ))}
-          </div>
-          <input className="input" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Γράψε αιτιολογία…" />
-        </div>
-        <button type="button" className="btn-primary w-full btn-lg" disabled={!canApply} onClick={() => capped !== null && apply(capped, "Η έκπτωση εφαρμόστηκε")}>
-          {pending ? "Εφαρμογή…" : "Εφαρμογή έκπτωσης"}
-        </button>
-        {currentCents > 0 && (
-          <button type="button" className="btn-ghost w-full text-danger" disabled={pending} onClick={() => apply(0, "Η έκπτωση αφαιρέθηκε")}>
-            Αφαίρεση έκπτωσης
-          </button>
-        )}
-      </div>
-    </Modal>
   );
 }

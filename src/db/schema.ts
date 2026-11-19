@@ -18,8 +18,10 @@ import {
   jsonb,
   primaryKey,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
+import type { FloorPlan } from "@/lib/floor-plan";
 
 const ts = (name?: string) =>
   name
@@ -75,6 +77,8 @@ export const areas = pgTable("areas", {
   mapAssetId: integer().references(() => assets.id),
   /** Το μπαρ που εξυπηρετεί τον χώρο: τα ροφήματα των τραπεζιών του τυπώνονται εκεί. */
   barStationId: integer().references(() => printStations.id),
+  /** Κάτοψη του χώρου: δωμάτια σε χιλιοστά (0–1000), σχεδιασμένα από τον υπεύθυνο. null = χωρίς δωμάτια. */
+  plan: jsonb().$type<FloorPlan>(),
 });
 
 export type TableShape = "square" | "round" | "wide";
@@ -206,7 +210,8 @@ export const productModifierGroups = pgTable(
 
 export type SessionStatus = "open" | "billed" | "closed" | "cancelled";
 export type OrderType = "dine_in" | "takeaway" | "delivery";
-export type SessionSource = "staff" | "qr";
+/** staff = σερβιτόρος/PDA, qr = παραγγελία πελάτη από QR, till = γρήγορη πώληση στο ταμείο (self-service). */
+export type SessionSource = "staff" | "qr" | "till";
 export type ItemStatus = "sent" | "preparing" | "ready" | "served" | "voided";
 
 export const tableSessions = pgTable(
@@ -241,6 +246,10 @@ export const tableSessions = pgTable(
     /** Πότε ειδοποιήθηκε ο πελάτης ότι η παραγγελία είναι έτοιμη. */
     readyAt: ts(),
     pickedUpAt: ts(),
+    /** Αριθμός βομβητή (pager) που πήρε ο πελάτης στο ταμείο. */
+    buzzerNo: integer(),
+    /** Κλειδί της συσκευής για μία πώληση: το ίδιο κλειδί δεν δημιουργεί δεύτερη πώληση (διπλό πάτημα / επανάληψη). */
+    clientRef: text().unique(),
   },
   (t) => [index("sessions_status_idx").on(t.status), index("sessions_table_idx").on(t.tableId)],
 );
@@ -343,19 +352,38 @@ export const printJobs = pgTable(
 
 export type PaymentMethod = "cash" | "card" | "other";
 
-export const cashSessions = pgTable("cash_sessions", {
+/** Ταμεία (σημεία πώλησης): «Ταμείο 1», «Ταμείο 2»… Κάθε ταμείο έχει τη δική του βάρδια. */
+export const registers = pgTable("registers", {
   id: serial().primaryKey(),
-  openedBy: integer()
-    .notNull()
-    .references(() => employees.id),
-  openedAt: ts().notNull().defaultNow(),
-  openingFloatCents: integer().notNull().default(0),
-  closedBy: integer().references(() => employees.id),
-  closedAt: ts(),
-  countedCashCents: integer(),
-  expectedCashCents: integer(),
-  notes: text(),
+  name: text().notNull().unique(),
+  sort: integer().notNull().default(0),
+  active: boolean().notNull().default(true),
+  createdAt: ts().notNull().defaultNow(),
 });
+
+export const cashSessions = pgTable(
+  "cash_sessions",
+  {
+    id: serial().primaryKey(),
+    /** Το ταμείο της βάρδιας. null μόνο σε παλιές βάρδιες (πριν από τα πολλά ταμεία). */
+    registerId: integer().references(() => registers.id),
+    openedBy: integer()
+      .notNull()
+      .references(() => employees.id),
+    openedAt: ts().notNull().defaultNow(),
+    openingFloatCents: integer().notNull().default(0),
+    closedBy: integer().references(() => employees.id),
+    closedAt: ts(),
+    countedCashCents: integer(),
+    expectedCashCents: integer(),
+    notes: text(),
+  },
+  (t) => [
+    index("cash_sessions_register_idx").on(t.registerId),
+    // Το πολύ ΜΙΑ ανοιχτή βάρδια ανά ταμείο (το εγγυάται η βάση).
+    uniqueIndex("cash_sessions_open_register_uq").on(t.registerId).where(sql`${t.closedAt} is null`),
+  ],
+);
 
 export const payments = pgTable(
   "payments",
@@ -376,7 +404,7 @@ export const payments = pgTable(
       .references(() => employees.id),
     createdAt: ts().notNull().defaultNow(),
   },
-  (t) => [index("payments_session_idx").on(t.sessionId)],
+  (t) => [index("payments_session_idx").on(t.sessionId), index("payments_cash_session_idx").on(t.cashSessionId)],
 );
 
 export type FiscalKind = "order_slip_8_6" | "receipt_11_1" | "invoice" | "credit";
@@ -516,7 +544,22 @@ export const goodsReceiptLines = pgTable("goods_receipt_lines", {
 /* Εκδηλώσεις (γάμοι, βαφτίσεις, πάρτι, σχολικές εκδρομές)              */
 /* ------------------------------------------------------------------ */
 
-export type EventType = "wedding" | "christening" | "party" | "school_trip" | "corporate" | "other";
+export type EventType = "wedding" | "christening" | "appointment" | "party" | "school_trip" | "corporate" | "other";
+
+/** Στοιχεία παιδικού πάρτι (μόνο για type = "party"). */
+export type PartyDetails = {
+  childName?: string;
+  childAge?: number | null;
+  kids?: number;
+  adults?: number;
+  /** Κλειδί πακέτου από τον τιμοκατάλογο (π.χ. "bounce"). */
+  package?: string;
+  /** Μενού ενηλίκων (π.χ. "classic", "grill", "buffet", "none"). */
+  adultMenu?: string;
+  extras?: string[];
+  theme?: string;
+  cake?: string;
+};
 export type EventStatus = "inquiry" | "confirmed" | "cancelled" | "done";
 
 export const events = pgTable(
@@ -540,6 +583,8 @@ export const events = pgTable(
     depositPaid: boolean().notNull().default(false),
     menuNotes: text(),
     notes: text(),
+    /** Στοιχεία παιδικού πάρτι (παιδί, ηλικία, πακέτο, τούρτα…). */
+    party: jsonb().$type<PartyDetails>(),
     createdBy: integer().references(() => employees.id),
     createdAt: ts().notNull().defaultNow(),
     updatedAt: ts().notNull().defaultNow(),
@@ -633,6 +678,14 @@ export const orderItemModifiersRelations = relations(orderItemModifiers, ({ one 
 export const paymentsRelations = relations(payments, ({ one }) => ({
   session: one(tableSessions, { fields: [payments.sessionId], references: [tableSessions.id] }),
   employee: one(employees, { fields: [payments.employeeId], references: [employees.id] }),
+  cashSession: one(cashSessions, { fields: [payments.cashSessionId], references: [cashSessions.id] }),
+}));
+export const registersRelations = relations(registers, ({ many }) => ({ cashSessions: many(cashSessions) }));
+export const cashSessionsRelations = relations(cashSessions, ({ one, many }) => ({
+  register: one(registers, { fields: [cashSessions.registerId], references: [registers.id] }),
+  openedByEmployee: one(employees, { fields: [cashSessions.openedBy], references: [employees.id] }),
+  closedByEmployee: one(employees, { fields: [cashSessions.closedBy], references: [employees.id] }),
+  payments: many(payments),
 }));
 export const ingredientsRelations = relations(ingredients, ({ one, many }) => ({
   supplier: one(suppliers, { fields: [ingredients.supplierId], references: [suppliers.id] }),
@@ -661,4 +714,42 @@ export const goodsReceiptLinesRelations = relations(goodsReceiptLines, ({ one })
 }));
 export const printJobsRelations = relations(printJobs, ({ one }) => ({
   station: one(printStations, { fields: [printJobs.stationId], references: [printStations.id] }),
+}));
+
+/* ------------------------------------------------------------------ */
+/* Έσοδα – έξοδα                                                       */
+/* ------------------------------------------------------------------ */
+
+export type FinanceKind = "income" | "expense";
+export type FinanceMethod = "cash" | "card" | "bank" | "other";
+
+/**
+ * Χειροκίνητες κινήσεις εσόδων/εξόδων (ενοίκιο, ρεύμα, μισθοί, προκαταβολές με μεταφορά…).
+ * Οι πληρωμές του ταμείου και οι παραλαβές αποθήκης μετριούνται αυτόματα και ΔΕΝ περνιούνται εδώ.
+ */
+export const financeEntries = pgTable(
+  "finance_entries",
+  {
+    id: serial().primaryKey(),
+    kind: text().$type<FinanceKind>().notNull(),
+    /** Ημερομηνία παραστατικού/πληρωμής (YYYY-MM-DD, ώρα Αθήνας). */
+    date: text().notNull(),
+    category: text().notNull(),
+    description: text().notNull().default(""),
+    /** Συνολικό ποσό με ΦΠΑ, σε λεπτά. */
+    amountCents: integer().notNull(),
+    vatCents: integer().notNull().default(0),
+    method: text().$type<FinanceMethod>().notNull().default("bank"),
+    supplierId: integer().references(() => suppliers.id),
+    eventId: integer().references(() => events.id),
+    docNumber: text(),
+    createdBy: integer().references(() => employees.id),
+    createdAt: ts().notNull().defaultNow(),
+  },
+  (t) => [index("finance_entries_date_idx").on(t.date)],
+);
+
+export const financeEntriesRelations = relations(financeEntries, ({ one }) => ({
+  supplier: one(suppliers, { fields: [financeEntries.supplierId], references: [suppliers.id] }),
+  event: one(events, { fields: [financeEntries.eventId], references: [events.id] }),
 }));

@@ -6,6 +6,7 @@ import { Money } from "@/components/ui";
 import { fmtTime } from "@/components/ops/labels";
 import { firstName } from "@/components/qr/labels";
 import { usePublicLive } from "@/components/qr/live";
+import { ContactFooter, type VenueContact } from "@/components/qr/contact";
 import type { PublicOrder, PublicOrderStatus } from "@/server/services/public-order";
 
 const STEPS: { key: PublicOrderStatus; label: string; hint: string }[] = [
@@ -47,7 +48,7 @@ function beep(ctx: AudioContext) {
   });
 }
 
-export function StatusClient({ order, token, venueName }: { order: PublicOrder; token: string; venueName: string }) {
+export function StatusClient({ order, token, venueName, contact }: { order: PublicOrder; token: string; venueName: string; contact: VenueContact }) {
   usePublicLive({ token }, { pollMs: 10000 });
   const [armed, setArmed] = useState(false);
   const [notif, setNotif] = useState<NotificationPermission | null>(null);
@@ -77,14 +78,14 @@ export function StatusClient({ order, token, venueName }: { order: PublicOrder; 
     if ("Notification" in window && Notification.permission === "granted") {
       try {
         new Notification(`${venueName}: η παραγγελία #${order.code} είναι έτοιμη`, {
-          body: "Πέρασε από το ταμείο για παραλαβή και πληρωμή.",
+          body: order.paid ? "Πέρασε να την παραλάβεις." : "Πέρασε από το ταμείο για παραλαβή και πληρωμή.",
           tag: `nido-order-${order.code}`,
         });
       } catch {
         /* ignore */
       }
     }
-  }, [order.status, order.code, venueName]);
+  }, [order.status, order.code, order.paid, venueName]);
 
   const arm = async () => {
     // Ξεκλείδωμα ήχου: το AudioContext επιτρέπεται μόνο μετά από χειρονομία του χρήστη.
@@ -124,7 +125,7 @@ export function StatusClient({ order, token, venueName }: { order: PublicOrder; 
 
   return (
     <div className="flex-1 flex flex-col max-w-lg w-full mx-auto min-h-full">
-      <header className="bg-cream px-4 pt-3 pb-3 border-b border-line">
+      <header className="bg-white/60 backdrop-blur-xl px-4 pt-3 pb-3 border-b border-line">
         <div className="flex items-center gap-3">
           <Mark height={44} />
           <div className="min-w-0">
@@ -142,7 +143,27 @@ export function StatusClient({ order, token, venueName }: { order: PublicOrder; 
           </div>
           {name && <div className="text-xl font-semibold mt-2">{name}</div>}
           <div className="text-xs text-ink-3 mt-1 num">Παραγγελία {fmtTime(order.createdAt)}</div>
+          {order.buzzerNo !== null && (
+            <div className="mt-3 inline-flex items-center gap-2 rounded-2xl bg-amber-100 border border-amber-400/70 text-amber-900 px-4 py-2" data-testid="buzzer">
+              <span aria-hidden className="text-2xl">
+                🔔
+              </span>
+              <span className="text-lg font-bold">
+                Βομβητής <span className="num text-2xl font-black">{order.buzzerNo}</span>
+              </span>
+            </div>
+          )}
         </section>
+
+        {active && (
+          <section className={`rounded-2xl p-4 text-center text-sm font-medium ${order.paid ? "bg-ok-soft text-ok" : "bg-warn-soft text-warn"}`} role="status">
+            {order.paid
+              ? order.buzzerNo !== null
+                ? "Πληρώθηκε. Θα χτυπήσει ο βομβητής σου όταν είναι έτοιμη."
+                : "Πληρώθηκε. Θα σε ειδοποιήσουμε όταν είναι έτοιμη."
+              : "Πέρασε από το ταμείο να πληρώσεις και να πάρεις βομβητή."}
+          </section>
+        )}
 
         {order.status === "ready" && (
           <section className="rounded-2xl bg-ok text-white p-5 text-center shadow-lg" role="status" aria-live="assertive">
@@ -150,7 +171,7 @@ export function StatusClient({ order, token, venueName }: { order: PublicOrder; 
               ✅
             </div>
             <div className="text-2xl font-black leading-tight mt-1">Η παραγγελία σου είναι έτοιμη!</div>
-            <div className="text-base mt-2 text-white/95">Πέρασε από το ταμείο για παραλαβή και πληρωμή.</div>
+            <div className="text-base mt-2 text-white/95">{order.paid ? "Πέρασε να την παραλάβεις." : "Πέρασε από το ταμείο για παραλαβή και πληρωμή."}</div>
             {order.readyAt && <div className="text-xs text-white/80 mt-2 num">Έτοιμη από {fmtTime(order.readyAt)}</div>}
           </section>
         )}
@@ -247,6 +268,7 @@ export function StatusClient({ order, token, venueName }: { order: PublicOrder; 
             Νέα παραγγελία
           </Link>
         </div>
+        <ContactFooter contact={contact} />
       </main>
     </div>
   );

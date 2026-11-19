@@ -62,3 +62,17 @@ export function minutesSince(from: Date | string, now: number = Date.now()): num
   const t = typeof from === "string" ? new Date(from).getTime() : from.getTime();
   return Math.max(0, Math.floor((now - t) / 60000));
 }
+
+/** "12,50" -> 1250. null αν είναι κενό, αρνητικό ή δεν είναι ποσό. */
+export function inputToCents(v: string): number | null {
+  const cleaned = v.replace(/\s|€/g, "").replace(",", ".");
+  if (!cleaned) return null;
+  const n = Number(cleaned);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.round(n * 100);
+}
+
+/** Ποσό για κουμπιά: "20 €" όταν είναι ακέραιο, αλλιώς "12,50 €". */
+export function shortEuro(cents: number): string {
+  return cents % 100 === 0 ? `${cents / 100} €` : `${(cents / 100).toFixed(2).replace(".", ",")} €`;
+}

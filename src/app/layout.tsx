@@ -1,11 +1,13 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { PwaRegister } from "@/components/pwa";
 
 export const metadata: Metadata = {
   title: "Nido Village",
   description: "Παραγγελιοληψία, ταμείο και αποθήκη",
   manifest: "/manifest.webmanifest",
-  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Nido" },
+  applicationName: "Nido Village",
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "Nido" },
 };
 
 export const viewport: Viewport = {
@@ -13,13 +15,17 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  themeColor: "#121a13",
+  themeColor: "#f4f1e8",
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="el" className="h-full antialiased">
-      <body className="min-h-full flex flex-col bg-surface text-ink">{children}</body>
+      <body className="min-h-full flex flex-col bg-surface text-ink">
+        {children}
+        <PwaRegister />
+      </body>
     </html>
   );
 }

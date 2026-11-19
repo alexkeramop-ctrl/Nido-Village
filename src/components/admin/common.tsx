@@ -1,5 +1,6 @@
 "use client";
-import { useTransition, type ReactNode } from "react";
+import { useEffect, useRef, useTransition, type ReactNode } from "react";
+import { attachSorting } from "./sortable";
 import { Modal, useToast } from "@/components/ui";
 import type { ActionResult } from "@/server/action";
 
@@ -36,10 +37,18 @@ export function InfoBox({ children, tone = "neutral" }: { children: ReactNode; t
   return <div className={`rounded-xl px-4 py-3 text-sm ${cls}`}>{children}</div>;
 }
 
-export function TableWrap({ children }: { children: ReactNode }) {
+/** Πίνακας με ταξινόμηση: κλικ σε επικεφαλίδα = αύξουσα, ξανά = φθίνουσα. `data-nosort` σε th για εξαίρεση. */
+export function TableWrap({ children, sortable = true }: { children: ReactNode; sortable?: boolean }) {
+  const ref = useRef<HTMLTableElement>(null);
+  useEffect(() => {
+    if (!sortable || !ref.current) return;
+    return attachSorting(ref.current);
+  }, [sortable]);
   return (
     <div className="relative overflow-x-auto">
-      <table className="table-grid">{children}</table>
+      <table ref={ref} className="table-grid">
+        {children}
+      </table>
     </div>
   );
 }
@@ -173,4 +182,36 @@ export function formValues(fd: FormData) {
     bool: (k: string) => raw(k) === "on",
     ints: (k: string) => fd.getAll(k).map((v) => Number(v)).filter((n) => Number.isFinite(n)),
   };
+}
+
+/* ------------------------------ Ώρα 24ώρου ------------------------------ */
+
+const HOURS = Array.from({ length: 24 }, (_, h) => String(h).padStart(2, "0"));
+
+/** Επιλογή ώρας πάντα σε 24ωρη μορφή (το type="time" δείχνει ΠΜ/ΜΜ ανάλογα με τη γλώσσα της συσκευής). */
+export function Time24({ name, value, onChange, step = 5 }: { name: string; value: string; onChange: (v: string) => void; step?: number }) {
+  const [h, m] = (value || "00:00").split(":");
+  const mins = Array.from({ length: 60 / step }, (_, i) => String(i * step).padStart(2, "0"));
+  if (!mins.includes(m)) mins.push(m);
+  mins.sort();
+  return (
+    <span className="flex items-center gap-1">
+      <input type="hidden" name={name} value={`${h}:${m}`} />
+      <select aria-label="Ώρα" className="input num px-2" value={h} onChange={(e) => onChange(`${e.target.value}:${m}`)}>
+        {HOURS.map((x) => (
+          <option key={x} value={x}>
+            {x}
+          </option>
+        ))}
+      </select>
+      <span className="text-ink-3 font-semibold">:</span>
+      <select aria-label="Λεπτά" className="input num px-2" value={m} onChange={(e) => onChange(`${h}:${e.target.value}`)}>
+        {mins.map((x) => (
+          <option key={x} value={x}>
+            {x}
+          </option>
+        ))}
+      </select>
+    </span>
+  );
 }

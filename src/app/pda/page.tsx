@@ -26,6 +26,7 @@ export default async function PdaPage() {
           id: a.id,
           name: a.name,
           image: a.mapAssetId === null ? null : (images.get(a.mapAssetId) ?? null),
+          rooms: a.plan?.rooms ?? [],
           tables: a.tables.map((t) => ({
             id: t.id,
             name: t.name,

@@ -46,7 +46,6 @@ export async function saveProductAction(input: {
       modifierGroupIds: input.modifierGroupIds,
     });
     revalidatePath("/admin/menu");
-    revalidatePath("/admin/recipes");
   });
 }
 
@@ -76,8 +75,21 @@ export async function deleteProductAction(id: number) {
     if (!Number.isInteger(id) || id <= 0) throw new Error("Μη έγκυρο είδος");
     const result = await deleteProduct(id);
     revalidatePath("/admin/menu");
-    revalidatePath("/admin/recipes");
     revalidatePath("/pda");
     return result;
+  });
+}
+
+/** Φορτώνει το βασικό μενού μπαρ με ενδεικτικές τιμές (χωρίς διπλοεγγραφές). */
+export async function loadStarterMenuAction() {
+  return run(async () => {
+    const me = await requireRole("manager", "admin");
+    const { loadStarterMenu } = await import("@/db/starter-menu");
+    const { getDb } = await import("@/db");
+    const { audit } = await import("@/server/audit");
+    const r = await loadStarterMenu();
+    await audit(await getDb(), me.id, "starter_menu", "catalog", null, r);
+    revalidatePath("/admin/menu");
+    return r;
   });
 }
