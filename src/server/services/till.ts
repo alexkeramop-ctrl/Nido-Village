@@ -18,7 +18,7 @@ import { buzzerSlip } from "@/server/printing/templates";
 import { closeSessionTx, computeTotals, insertPaymentsTx, issueReceiptForSession, lineTotalCents } from "./billing";
 import { TILL_TYPE_LABEL, loadRoundContext, recordOrderSlip, resolveLines, sendRoundTx, type CartLine } from "./ordering";
 import { listReadyForPickup, statusOf } from "./public-order";
-import { getOpenShift, shiftSummary, toShiftDto } from "./registers";
+import { getOpenShift, qrAreaOwners, shiftSummary, toShiftDto, type QrAreaOwner } from "./registers";
 import { athensDayStart, todayAthens } from "./reports";
 
 export type TillEmployee = { id: number; name: string; role: EmployeeRole };
@@ -70,7 +70,7 @@ function displayNoOf(s: { id: number; buzzerNo: number | null; pickupCode?: stri
 
 async function lockOpenShiftTx(tx: DbLike, cashSessionId: number) {
   const [shift] = await tx
-    .select({ id: schema.cashSessions.id, registerId: schema.cashSessions.registerId })
+    .select({ id: schema.cashSessions.id, registerId: schema.cashSessions.registerId, barStationId: schema.cashSessions.barStationId })
     .from(schema.cashSessions)
     .where(and(eq(schema.cashSessions.id, cashSessionId), isNull(schema.cashSessions.closedAt)))
     .for("share");
@@ -195,7 +195,8 @@ export async function quickSale(input: QuickSaleInput, employee: TillEmployee, o
         tableName,
         orderType: "takeaway",
         label: customerName,
-        areaBarStationId: null,
+        // Ροφήματα: στο μπαρ που διάλεξε το ταμείο στο άνοιγμα της βάρδιας.
+        areaBarStationId: shift.barStationId,
         buzzerNo,
         customerName,
         typeLabel: TILL_TYPE_LABEL,
@@ -364,6 +365,8 @@ export type PendingOrder = {
   sessionId: number;
   /** true: παραγγελία πελάτη από QR (πρώτες στη λίστα). */
   qr: boolean;
+  /** Ο χώρος του QR (π.χ. «Παιδική χαρά»). null = παλιό κοινό QR ή λογαριασμός τραπεζιού. */
+  areaName: string | null;
   name: string;
   code: string | null;
   customerName: string | null;
@@ -380,21 +383,34 @@ export type PendingOrder = {
   dueCents: number;
 };
 
-/** «Προς πληρωμή»: ό,τι περιμένει είσπραξη στο ταμείο. Πρώτα οι παραγγελίες QR, μετά τυχόν παλιοί ανοιχτοί λογαριασμοί. */
-export async function listPendingForTill(): Promise<PendingOrder[]> {
+/**
+ * «Προς πληρωμή»: ό,τι περιμένει είσπραξη στο ταμείο. Πρώτα οι παραγγελίες QR, μετά τυχόν παλιοί ανοιχτοί λογαριασμοί.
+ * Με registerId: οι παραγγελίες QR ενός χώρου φαίνονται ΜΟΝΟ στο ταμείο που δέχεται αυτόν τον χώρο. Αν κανένα ανοιχτό ταμείο
+ * δεν τον δέχεται πια (π.χ. έκλεισε η βάρδια του), φαίνονται σε όλα, ώστε να μη χαθεί καμία απλήρωτη παραγγελία.
+ */
+export async function listPendingForTill(registerId?: number): Promise<PendingOrder[]> {
   const db = await getDb();
-  const rows = await db.query.tableSessions.findMany({
-    where: inArray(schema.tableSessions.status, ["open", "billed"]),
-    orderBy: [asc(schema.tableSessions.openedAt)],
-    with: { table: true, items: { orderBy: [asc(schema.orderItems.id)], with: { modifiers: true } }, payments: true },
+  const [rows, owners] = await Promise.all([
+    db.query.tableSessions.findMany({
+      where: inArray(schema.tableSessions.status, ["open", "billed"]),
+      orderBy: [asc(schema.tableSessions.openedAt)],
+      with: { table: true, area: true, items: { orderBy: [asc(schema.orderItems.id)], with: { modifiers: true } }, payments: true },
+    }),
+    registerId ? qrAreaOwners(db) : Promise.resolve(new Map<number, QrAreaOwner>()),
+  ]);
+  const visible = rows.filter((s) => {
+    if (!registerId || s.source !== "qr" || s.areaId === null) return true;
+    const owner = owners.get(s.areaId);
+    return !owner || owner.registerId === registerId;
   });
-  const out = rows.map((s): PendingOrder => {
+  const out = visible.map((s): PendingOrder => {
     const totals = computeTotals(s.items, s.discountCents, s.payments);
     const live = s.items.filter((i) => i.status !== "voided");
     const status = statusOf(s);
     return {
       sessionId: s.id,
       qr: s.source === "qr",
+      areaName: s.area?.name ?? null,
       name: s.table ? s.table.name : s.label ?? `#${s.id}`,
       code: s.pickupCode,
       customerName: s.customerName,
@@ -432,7 +448,7 @@ export async function topProducts(limit = 12, days = 30): Promise<number[]> {
 export async function tillSnapshot(registerId: number) {
   const db = await getDb();
   const [pending, ready, shift, off] = await Promise.all([
-    listPendingForTill(),
+    listPendingForTill(registerId),
     listReadyForPickup(),
     getOpenShift(registerId),
     db.select({ id: schema.products.id }).from(schema.products).where(and(eq(schema.products.active, true), eq(schema.products.available, false))),

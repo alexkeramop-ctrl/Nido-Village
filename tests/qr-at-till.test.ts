@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/db";
-import { seeded, employeeByName, productByName, modifierByName, tableByName } from "./helpers";
+import { seeded, employeeByName, productByName, modifierByName, tableByName, areaByName, stationByName } from "./helpers";
 import { listRegisters, openRegisterShift, shiftSummary } from "@/server/services/registers";
 import { listPendingForTill, payOrderAtTill, tillSnapshot, type TillEmployee } from "@/server/services/till";
 import { bumpOrder, getKdsTickets, openSession, sendRound } from "@/server/services/ordering";
@@ -13,6 +13,7 @@ let manager: TillEmployee;
 let shift1: number;
 let shift2: number;
 let register2: number;
+let qrArea: number;
 
 beforeAll(async () => {
   await seeded();
@@ -23,7 +24,8 @@ beforeAll(async () => {
   const [r1, r2] = await listRegisters();
   register2 = r2.id;
   shift1 = (await openRegisterShift(r1.id, 0, cashier.id)).id;
-  shift2 = (await openRegisterShift(r2.id, 1000, cashier.id)).id;
+  qrArea = (await areaByName("Παιδική")).id;
+  shift2 = (await openRegisterShift(r2.id, 1000, cashier.id, { barStationId: (await stationByName("Μπαρ Παιδική")).id, qrAreaIds: [qrArea] })).id;
 });
 
 describe("παραγγελία QR που πληρώνεται στο ταμείο", () => {
@@ -32,7 +34,7 @@ describe("παραγγελία QR που πληρώνεται στο ταμεί�
     const burger = await productByName("Classic Burger");
     const cola = await productByName("Coca-Cola 330ml");
     const cheese = await modifierByName("Extra τυρί");
-    const r = await placeQrOrder({ customerName: "Κώστας", lines: [{ productId: burger.id, qty: 2, modifierIds: [cheese.id] }, { productId: cola.id, qty: 1 }] });
+    const r = await placeQrOrder({ areaId: qrArea, customerName: "Κώστας", lines: [{ productId: burger.id, qty: 2, modifierIds: [cheese.id] }, { productId: cola.id, qty: 1 }] });
 
     let pending = await listPendingForTill();
     expect(pending).toHaveLength(1);
@@ -80,9 +82,10 @@ describe("παραγγελία QR που πληρώνεται στο ταμεί�
     expect(o.buzzerNo).toBe(5);
 
     // Κουζίνα και μπαρ μαθαίνουν τον βομβητή: μικρό δελτίο + στην οθόνη.
+    // Το ρόφημα πήγε στο μπαρ του ταμείου που δέχεται την Παιδική (Μπαρ Παιδική), όχι στο μπαρ της κατηγορίας.
     const jobs = await db.query.printJobs.findMany({ with: { station: true } });
     const slips = jobs.slice(jobsBefore);
-    expect(slips.map((j) => j.station.name).sort()).toEqual(["Κουζίνα", "Μπαρ Κέντρο"]);
+    expect(slips.map((j) => j.station.name).sort()).toEqual(["Κουζίνα", "Μπαρ Παιδική"]);
     expect(slips.every((j) => j.renderedText!.includes("ΒΟΜΒΗΤΗΣ 5") && j.renderedText!.includes("#001 Κώστας"))).toBe(true);
     const ticket = (await getKdsTickets()).find((t) => t.sessionId === r.sessionId)!;
     expect(ticket).toMatchObject({ buzzerNo: 5, paid: true, source: "qr" });
@@ -109,7 +112,7 @@ describe("παραγγελία QR που πληρώνεται στο ταμεί�
     const db = await getDb();
     const cola = await productByName("Coca-Cola 330ml");
     const pizza = await productByName("Kids Πίτσα");
-    const r = await placeQrOrder({ customerName: "Ελένη", lines: [{ productId: cola.id, qty: 4 }] });
+    const r = await placeQrOrder({ areaId: qrArea, customerName: "Ελένη", lines: [{ productId: cola.id, qty: 4 }] });
     await db.update(schema.products).set({ available: false }).where(eq(schema.products.id, pizza.id));
 
     const snap = await tillSnapshot(register2);

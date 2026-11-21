@@ -9,7 +9,9 @@ const MAX_QTY = 20;
 /** Καθαρίζει την είσοδο του πελάτη: μόνο τα πεδία που περιμένουμε, με όρια. */
 function sanitize(input: QrOrderInput): QrOrderInput {
   const lines = Array.isArray(input?.lines) ? input.lines : [];
+  const areaId = Number(input?.areaId);
   return {
+    areaId: Number.isInteger(areaId) && areaId > 0 ? areaId : null,
     customerName: String(input?.customerName ?? "").trim().slice(0, 40),
     customerPhone: input?.customerPhone ? String(input.customerPhone).trim().slice(0, 20) : null,
     notes: input?.notes ? String(input.notes).trim().slice(0, 200) : null,

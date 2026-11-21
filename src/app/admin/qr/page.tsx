@@ -3,8 +3,8 @@ import { toDataURL } from "qrcode";
 import { LiveRefresh } from "@/components/live";
 import { requirePageUser } from "@/server/page-auth";
 import { getSettings } from "@/server/services/settings";
-import { listRecentQrOrders } from "@/server/services/public-order";
-import { QrClient } from "./qr-client";
+import { listRecentQrOrders, qrAreasStatus } from "@/server/services/public-order";
+import { QrClient, type QrCode } from "./qr-client";
 
 export const dynamic = "force-dynamic";
 
@@ -21,15 +21,20 @@ export default async function AdminQrPage() {
   const origin = await publicOrigin();
   const orderUrl = `${origin}/order`;
   const pickupUrl = `${origin}/pickup`;
-  const [qrDataUrl, orders, settings] = await Promise.all([toDataURL(orderUrl, { width: 512, margin: 2 }), listRecentQrOrders(50), getSettings()]);
+  const [orders, settings, areas] = await Promise.all([listRecentQrOrders(50), getSettings(), qrAreasStatus()]);
+  // Ένα QR ανά χώρο (πάει στο ταμείο που δέχεται τον χώρο) και ένα κοινό που ρωτά τον πελάτη πού κάθεται.
+  const codes = [
+    ...areas.map((a) => ({ key: `area-${a.id}`, label: a.name, area: a.name, url: `${orderUrl}?a=${a.id}`, open: a.open })),
+    { key: "all", label: areas.length > 1 ? "Κοινό (ρωτά πού κάθεται)" : "Κοινό", area: null, url: orderUrl, open: null },
+  ];
+  const qrs: QrCode[] = await Promise.all(codes.map(async (c) => ({ ...c, dataUrl: await toDataURL(c.url, { width: 512, margin: 2 }) })));
   return (
     <>
       <LiveRefresh types={["session.changed"]} />
       <QrClient
         venueName={settings.venueName}
-        orderUrl={orderUrl}
+        qrs={qrs}
         pickupUrl={pickupUrl}
-        qrDataUrl={qrDataUrl}
         orders={orders.map((o) => ({
           sessionId: o.sessionId,
           code: o.code,

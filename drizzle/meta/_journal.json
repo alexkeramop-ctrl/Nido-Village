@@ -50,6 +50,13 @@
       "when": 1794911321985,
       "tag": "0006_registers_buzzer",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795241933503,
+      "tag": "0007_shift_bar_qr_areas",
+      "breakpoints": true
     }
   ]
 }

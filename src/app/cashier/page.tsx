@@ -2,6 +2,7 @@ import { requirePageUser } from "@/server/page-auth";
 import { hasRole } from "@/server/auth";
 import { getMenu } from "@/server/services/catalog";
 import { deviceRegister } from "@/server/services/device-register";
+import { shiftSetupOptions } from "@/server/services/registers";
 import { tillSnapshot, topProducts } from "@/server/services/till";
 import { Shell } from "@/components/shell";
 import { OpenShiftPanel, RegisterPicker } from "./shift-panels";
@@ -29,7 +30,7 @@ export default async function CashierPage() {
   if (!register.openShift) {
     return (
       <Shell user={user} active="/cashier" title="Ταμείο">
-        <OpenShiftPanel key={register.id} register={{ id: register.id, name: register.name }} canSwitch={registers.length > 1} />
+        <OpenShiftPanel key={register.id} register={{ id: register.id, name: register.name }} canSwitch={registers.length > 1} options={await shiftSetupOptions(register.id)} />
       </Shell>
     );
   }

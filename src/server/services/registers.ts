@@ -4,9 +4,10 @@
  *  - Κάθε πληρωμή γράφεται στη βάρδια του ταμείου όπου εισπράχθηκε (payments.cash_session_id).
  *  - Στο τέλος της ημέρας κάθε ταμείο κλείνει χωριστά: αναμενόμενα μετρητά, μετρημένα, διαφορά.
  */
-import { and, asc, eq, gte, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { audit, type DbLike } from "@/server/audit";
+import { emit } from "@/server/events";
 import { isUniqueViolation } from "@/server/util";
 import type { PaymentMethod } from "@/db/schema";
 import { addDays, athensDayStart, todayAthens } from "./reports";
@@ -120,22 +121,169 @@ export async function upsertRegister(input: { id?: number; name: string; sort?: 
   }
 }
 
+/* ------------------------------ Μπαρ και χώροι QR της βάρδιας ------------------------------ */
+
+/**
+ * Τι διαλέγει το ταμείο στο άνοιγμα της βάρδιας (και μπορεί να αλλάξει όσο είναι ανοιχτή):
+ *  - το μπαρ όπου βγαίνουν τα ροφήματα των πωλήσεών του και των παραγγελιών QR που δέχεται·
+ *  - τους χώρους των οποίων τις παραγγελίες QR δέχεται. Κάθε χώρος ανήκει σε ΕΝΑ ανοιχτό ταμείο τη φορά:
+ *    αν τον πάρει άλλο ταμείο, φεύγει από το προηγούμενο. Χώρος χωρίς ανοιχτό ταμείο = κλειστός για QR.
+ */
+export type ShiftSetup = { barStationId: number | null; qrAreaIds: number[] };
+export type QrAreaOwner = { shiftId: number; registerId: number | null; registerName: string; barStationId: number | null };
+export type ShiftSetupOptions = {
+  bars: { id: number; name: string }[];
+  areas: { id: number; name: string; takenBy: string | null }[];
+  /** Ό,τι ισχύει τώρα (ανοιχτή βάρδια) ή προτείνεται για το άνοιγμα (από την προηγούμενη βάρδια του ταμείου). */
+  current: ShiftSetup;
+};
+
+/** Κλειδί για pg_advisory_xact_lock: ανάθεση χώρων QR σε ταμεία, ένα τη φορά. */
+const QR_AREAS_LOCK = 20261121;
+
+async function activeBars(db: DbLike) {
+  return db
+    .select({ id: schema.printStations.id, name: schema.printStations.name })
+    .from(schema.printStations)
+    .where(and(eq(schema.printStations.kind, "bar"), eq(schema.printStations.enabled, true)))
+    .orderBy(asc(schema.printStations.sort), asc(schema.printStations.id));
+}
+
+async function activeAreas(db: DbLike) {
+  return db
+    .select({ id: schema.areas.id, name: schema.areas.name })
+    .from(schema.areas)
+    .where(eq(schema.areas.active, true))
+    .orderBy(asc(schema.areas.sort), asc(schema.areas.id));
+}
+
+/** Ποιο ανοιχτό ταμείο δέχεται τις παραγγελίες QR κάθε χώρου (αν δύο το δηλώνουν ταυτόχρονα, κερδίζει η νεότερη βάρδια). */
+export async function qrAreaOwners(db: DbLike): Promise<Map<number, QrAreaOwner>> {
+  const open = await db.query.cashSessions.findMany({
+    where: isNull(schema.cashSessions.closedAt),
+    with: { register: true },
+    orderBy: [asc(schema.cashSessions.id)],
+  });
+  const owners = new Map<number, QrAreaOwner>();
+  for (const s of open) {
+    for (const areaId of s.qrAreaIds ?? []) {
+      owners.set(areaId, { shiftId: s.id, registerId: s.registerId, registerName: s.register?.name ?? LEGACY_REGISTER_NAME, barStationId: s.barStationId });
+    }
+  }
+  return owners;
+}
+
+/** Ελέγχει τις επιλογές: μπαρ ενεργό (υποχρεωτικό όταν υπάρχει μπαρ), χώροι ενεργοί, χωρίς διπλά. */
+async function cleanSetup(db: DbLike, setup: ShiftSetup): Promise<ShiftSetup> {
+  const [bars, areas] = await Promise.all([activeBars(db), activeAreas(db)]);
+  const bar = setup.barStationId === null || setup.barStationId === undefined ? null : Number(setup.barStationId);
+  if (bar !== null && !bars.some((b) => b.id === bar)) throw new Error("Το μπαρ δεν βρέθηκε ή είναι απενεργοποιημένο");
+  if (bar === null && bars.length) throw new Error("Διάλεξε σε ποιο μπαρ θα βγαίνουν τα ροφήματα");
+  const ids = [...new Set((Array.isArray(setup.qrAreaIds) ? setup.qrAreaIds : []).map(Number))];
+  if (ids.some((id) => !areas.some((a) => a.id === id))) throw new Error("Ο χώρος δεν βρέθηκε ή είναι απενεργοποιημένος");
+  return { barStationId: bar, qrAreaIds: ids.sort((a, b) => a - b) };
+}
+
+/** Οι χώροι που παίρνει αυτή η βάρδια φεύγουν από τα άλλα ανοιχτά ταμεία. Επιστρέφει ποιο ταμείο έχασε ποιους χώρους. */
+async function takeOverAreasTx(tx: DbLike, shiftId: number, areaIds: number[]): Promise<{ registerName: string; areaIds: number[] }[]> {
+  if (!areaIds.length) return [];
+  const others = await tx.query.cashSessions.findMany({
+    where: and(isNull(schema.cashSessions.closedAt), ne(schema.cashSessions.id, shiftId)),
+    with: { register: true },
+  });
+  const moved: { registerName: string; areaIds: number[] }[] = [];
+  for (const o of others) {
+    const lost = (o.qrAreaIds ?? []).filter((a) => areaIds.includes(a));
+    if (!lost.length) continue;
+    await tx
+      .update(schema.cashSessions)
+      .set({ qrAreaIds: (o.qrAreaIds ?? []).filter((a) => !areaIds.includes(a)) })
+      .where(eq(schema.cashSessions.id, o.id));
+    moved.push({ registerName: o.register?.name ?? LEGACY_REGISTER_NAME, areaIds: lost });
+  }
+  return moved;
+}
+
+/**
+ * Επιλογές για το άνοιγμα (ή την αλλαγή) της βάρδιας ενός ταμείου. Πρόταση: ό,τι είχε η προηγούμενη βάρδια του,
+ * χωρίς τους χώρους που έχει ήδη άλλο ανοιχτό ταμείο (ώστε να μην τους «πάρει» κατά λάθος).
+ */
+export async function shiftSetupOptions(registerId: number): Promise<ShiftSetupOptions> {
+  const db = await getDb();
+  const [bars, areas, owners, open, last] = await Promise.all([
+    activeBars(db),
+    activeAreas(db),
+    qrAreaOwners(db),
+    db.query.cashSessions.findFirst({ where: and(eq(schema.cashSessions.registerId, registerId), isNull(schema.cashSessions.closedAt)) }),
+    db.query.cashSessions.findFirst({
+      where: and(eq(schema.cashSessions.registerId, registerId), isNotNull(schema.cashSessions.closedAt)),
+      orderBy: [desc(schema.cashSessions.closedAt), desc(schema.cashSessions.id)],
+    }),
+  ]);
+  const takenBy = (areaId: number) => {
+    const o = owners.get(areaId);
+    return o && o.registerId !== registerId ? o.registerName : null;
+  };
+  let current: ShiftSetup;
+  if (open) current = { barStationId: open.barStationId, qrAreaIds: open.qrAreaIds ?? [] };
+  else {
+    const lastBar = last?.barStationId ?? null;
+    current = {
+      barStationId: lastBar !== null && bars.some((b) => b.id === lastBar) ? lastBar : bars.length === 1 ? bars[0].id : null,
+      qrAreaIds: (last?.qrAreaIds ?? []).filter((id) => areas.some((a) => a.id === id) && !takenBy(id)),
+    };
+  }
+  return { bars, areas: areas.map((a) => ({ ...a, takenBy: takenBy(a.id) })), current };
+}
+
+/** Αλλαγή μπαρ / χώρων QR σε ανοιχτή βάρδια (π.χ. το άλλο ταμείο κλείνει και αυτό αναλαμβάνει και την Παιδική χαρά). */
+export async function updateShiftSetup(cashSessionId: number, setup: ShiftSetup, employeeId: number) {
+  const db = await getDb();
+  const clean = await cleanSetup(db, setup);
+  const moved = await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(${QR_AREAS_LOCK})`);
+    const [cs] = await tx.select().from(schema.cashSessions).where(eq(schema.cashSessions.id, cashSessionId)).for("update");
+    if (!cs) throw new Error("Η βάρδια δεν βρέθηκε");
+    if (cs.closedAt) throw new Error("Η βάρδια έχει κλείσει");
+    await tx.update(schema.cashSessions).set(clean).where(eq(schema.cashSessions.id, cashSessionId));
+    const moved = await takeOverAreasTx(tx, cashSessionId, clean.qrAreaIds);
+    await audit(tx, employeeId, "shift_setup", "cash_session", cashSessionId, { registerId: cs.registerId, ...clean, moved });
+    return moved;
+  });
+  // Τα άλλα ταμεία ξαναρωτούν: αλλάζει ποιες παραγγελίες QR βλέπουν.
+  emit({ type: "kds.changed" });
+  return moved;
+}
+
 export async function getOpenShift(registerId: number) {
   const db = await getDb();
   return (await db.query.cashSessions.findFirst({ where: and(eq(schema.cashSessions.registerId, registerId), isNull(schema.cashSessions.closedAt)) })) ?? null;
 }
 
-/** Άνοιγμα βάρδιας σε ένα ταμείο με αρχικό ταμείο (ρέστα). */
-export async function openRegisterShift(registerId: number, openingFloatCents: number, employeeId: number) {
+/**
+ * Άνοιγμα βάρδιας σε ένα ταμείο με αρχικό ταμείο (ρέστα), μπαρ και χώρους QR.
+ * Χωρίς setup (παλιοί κλήτες/tests): χωρίς μπαρ (ισχύει το μπαρ της κατηγορίας) και χωρίς χώρους QR.
+ */
+export async function openRegisterShift(registerId: number, openingFloatCents: number, employeeId: number, setup?: ShiftSetup) {
   const db = await getDb();
   const float = Math.round(Number(openingFloatCents));
   if (!Number.isFinite(float) || float < 0) throw new Error("Μη έγκυρο αρχικό ταμείο");
   const register = await db.query.registers.findFirst({ where: eq(schema.registers.id, registerId) });
   if (!register) throw new Error("Το ταμείο δεν βρέθηκε");
   if (!register.active) throw new Error(`Το «${register.name}» είναι απενεργοποιημένο`);
+  const clean: ShiftSetup = setup ? await cleanSetup(db, setup) : { barStationId: null, qrAreaIds: [] };
   try {
-    const [row] = await db.insert(schema.cashSessions).values({ registerId, openedBy: employeeId, openingFloatCents: float }).returning();
-    await audit(db, employeeId, "cash_open", "cash_session", row.id, { registerId, register: register.name, openingFloatCents: float });
+    const row = await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(${QR_AREAS_LOCK})`);
+      const [row] = await tx
+        .insert(schema.cashSessions)
+        .values({ registerId, openedBy: employeeId, openingFloatCents: float, barStationId: clean.barStationId, qrAreaIds: clean.qrAreaIds })
+        .returning();
+      const moved = await takeOverAreasTx(tx, row.id, clean.qrAreaIds);
+      await audit(tx, employeeId, "cash_open", "cash_session", row.id, { registerId, register: register.name, openingFloatCents: float, ...clean, moved });
+      return row;
+    });
+    if (clean.qrAreaIds.length) emit({ type: "kds.changed" });
     return row;
   } catch (e) {
     if (isUniqueViolation(e)) throw new Error("Το ταμείο έχει ήδη ανοιχτή βάρδια");
@@ -166,6 +314,10 @@ export type ShiftSummary = {
   /** Μετρημένα − αναμενόμενα: θετικό = πλεόνασμα, αρνητικό = έλλειμμα. null όσο η βάρδια είναι ανοιχτή. */
   diffCents: number | null;
   notes: string | null;
+  /** Το μπαρ της βάρδιας (ροφήματα) και οι χώροι QR που δέχεται. */
+  barStationId: number | null;
+  barName: string | null;
+  qrAreas: { id: number; name: string }[];
 };
 
 export const LEGACY_REGISTER_NAME = "Παλιό ταμείο";
@@ -178,8 +330,9 @@ export async function shiftSummaries(db: DbLike, ids: number[]): Promise<ShiftSu
   const shifts = await db.query.cashSessions.findMany({
     where: inArray(schema.cashSessions.id, ids),
     orderBy: [asc(schema.cashSessions.openedAt), asc(schema.cashSessions.id)],
-    with: { register: true, openedByEmployee: true, closedByEmployee: true },
+    with: { register: true, openedByEmployee: true, closedByEmployee: true, barStation: true },
   });
+  const areaNames = new Map((await db.select({ id: schema.areas.id, name: schema.areas.name }).from(schema.areas)).map((a) => [a.id, a.name]));
   const totals = await db
     .select({
       cashSessionId: schema.payments.cashSessionId,
@@ -216,6 +369,9 @@ export async function shiftSummaries(db: DbLike, ids: number[]): Promise<ShiftSu
       countedCashCents: cs.countedCashCents,
       diffCents: cs.closedAt && cs.countedCashCents !== null ? cs.countedCashCents - expected : null,
       notes: cs.notes,
+      barStationId: cs.barStationId,
+      barName: cs.barStation?.name ?? null,
+      qrAreas: (cs.qrAreaIds ?? []).filter((id) => areaNames.has(id)).map((id) => ({ id, name: areaNames.get(id)! })),
     };
   });
 }
@@ -273,6 +429,8 @@ export async function closeRegisterShift(cashSessionId: number, countedCashCents
       diff: counted - expected,
     });
   });
+  // Οι χώροι QR αυτού του ταμείου μένουν χωρίς ταμείο: οι απλήρωτες παραγγελίες τους φαίνονται πλέον στα άλλα.
+  emit({ type: "kds.changed" });
   return shiftSummary(cashSessionId);
 }
 

@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { seeded, employeeByName, productByName, tableByName } from "./helpers";
+import { seeded, employeeByName, productByName, tableByName, areaByName, stationByName } from "./helpers";
 import { daySummary, listRegisters, openRegisterShift } from "@/server/services/registers";
 import { payOrderAtTill, quickSale, type TillEmployee } from "@/server/services/till";
 import { openSession, sendRound } from "@/server/services/ordering";
@@ -20,7 +20,8 @@ describe("αναφορές και έσοδα με τα νέα ταμεία", () 
   it("γρήγορη πώληση, QR στο ταμείο και παλιά πληρωμή μετριούνται ακριβώς μία φορά", async () => {
     const [r1, r2] = await listRegisters();
     const shift1 = (await openRegisterShift(r1.id, 5000, cashier.id)).id;
-    const shift2 = (await openRegisterShift(r2.id, 0, cashier.id)).id;
+    const qrArea = (await areaByName("Κέντρο")).id;
+    const shift2 = (await openRegisterShift(r2.id, 0, cashier.id, { barStationId: (await stationByName("Μπαρ Κέντρο")).id, qrAreaIds: [qrArea] })).id;
     const burger = await productByName("Classic Burger");
     const cola = await productByName("Coca-Cola 330ml");
     const waiter = await employeeByName("Μαρία");
@@ -32,7 +33,7 @@ describe("αναφορές και έσοδα με τα νέα ταμεία", () 
     );
     expect(quick.totalCents).toBe(1350);
     // 2) Παραγγελία QR που πληρώνεται με κάρτα στο Ταμείο 2: 2 × 8,50 = 17,00.
-    const qr = await placeQrOrder({ customerName: "Κώστας", lines: [{ productId: burger.id, qty: 2 }] });
+    const qr = await placeQrOrder({ areaId: qrArea, customerName: "Κώστας", lines: [{ productId: burger.id, qty: 2 }] });
     await payOrderAtTill({ sessionId: qr.sessionId, cashSessionId: shift2, buzzerNo: 4, tender: { cashCents: 0, cardCents: 1700 } }, cashier);
     // 3) Παλιά ροή (τραπέζι, πληρωμή χωρίς ταμείο): 2,50 μετρητά.
     const legacy = await openSession({ tableId: (await tableByName("Κ1")).id, covers: 2 }, waiter.id);
@@ -40,7 +41,7 @@ describe("αναφορές και έσοδα με τα νέα ταμεία", () 
     const lp = await addPayment(legacy.id, { method: "cash", amountCents: 250 }, cashier.id);
     expect(lp.payment.cashSessionId).toBeNull(); // δύο ανοιχτά ταμεία: δεν χρεώνεται σε κανένα
     // 4) Απλήρωτη παραγγελία QR: δεν μετρά πουθενά.
-    await placeQrOrder({ customerName: "Άννα", lines: [{ productId: cola.id, qty: 10 }] });
+    await placeQrOrder({ areaId: qrArea, customerName: "Άννα", lines: [{ productId: cola.id, qty: 10 }] });
 
     const today = todayAthens();
     const expected = { cash: 850 + 250, card: 500 + 1700, total: 1350 + 1700 + 250 };

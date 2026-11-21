@@ -8,21 +8,47 @@ const statements = (file: string) =>
     .map((s) => s.trim())
     .filter(Boolean);
 
-// Η 0006 εφαρμόζεται σε βάση παραγωγής που ΗΔΗ έχει γραμμές: πρέπει να είναι μόνο προσθετική και να μην τις αγγίζει.
-describe("migration 0006_registers_buzzer", () => {
-  it("είναι μόνο προσθετική (χωρίς DROP / NOT NULL σε υπάρχοντες πίνακες / αλλαγές δεδομένων)", () => {
-    const sql = readFileSync("drizzle/0006_registers_buzzer.sql", "utf8");
+// Η 0006 και η 0007 εφαρμόζονται σε βάση παραγωγής που ΗΔΗ έχει γραμμές: πρέπει να είναι μόνο προσθετικές και να μην τις αγγίζουν.
+describe("migrations 0006_registers_buzzer και 0007_shift_bar_qr_areas", () => {
+  it.each(["0006_registers_buzzer.sql", "0007_shift_bar_qr_areas.sql"])("η %s είναι μόνο προσθετική (χωρίς DROP / αλλαγές δεδομένων / NOT NULL χωρίς DEFAULT)", (file) => {
+    const sql = readFileSync(`drizzle/${file}`, "utf8");
     // (το «ON DELETE no action ON UPDATE no action» των ξένων κλειδιών δεν είναι εντολή)
     expect(sql.replace(/ON DELETE no action ON UPDATE no action/g, "")).not.toMatch(/\bDROP\b|\bDELETE\b|\bUPDATE\b|\bTRUNCATE\b|ALTER COLUMN|RENAME/i);
-    for (const stmt of statements("0006_registers_buzzer.sql")) {
+    for (const stmt of statements(file)) {
       expect(stmt).toMatch(/^(CREATE TABLE|ALTER TABLE "\w+" ADD (COLUMN|CONSTRAINT)|CREATE (UNIQUE )?INDEX)/);
-      if (/ADD COLUMN/.test(stmt)) expect(stmt).not.toMatch(/NOT NULL/);
+      // Νέα στήλη NOT NULL σε υπάρχοντα πίνακα μόνο με DEFAULT (η βάση γεμίζει τις υπάρχουσες γραμμές με αυτό).
+      if (/ADD COLUMN/.test(stmt) && /NOT NULL/.test(stmt)) expect(stmt).toMatch(/DEFAULT/);
     }
+  });
+
+  it("το journal είναι σε χρονική σειρά και τελειώνει στην 0007", () => {
     const journal = JSON.parse(readFileSync("drizzle/meta/_journal.json", "utf8")) as { entries: { tag: string; when: number }[] };
     const whens = journal.entries.map((e) => e.when);
     // Το drizzle εφαρμόζει ένα migration μόνο αν είναι νεότερο από το τελευταίο που έτρεξε.
     expect([...whens].sort((a, b) => a - b)).toEqual(whens);
-    expect(journal.entries.at(-1)?.tag).toBe("0006_registers_buzzer");
+    expect(journal.entries.slice(-2).map((e) => e.tag)).toEqual(["0006_registers_buzzer", "0007_shift_bar_qr_areas"]);
+  });
+
+  it("η 0007 εφαρμόζεται πάνω σε ανοιχτές βάρδιες και λογαριασμούς: χωρίς μπαρ, χωρίς χώρους QR, τίποτα άλλο δεν αλλάζει", async () => {
+    const pg = new PGlite();
+    for (const f of ["0000_init.sql", "0001_cloud.sql", "0002_floor_qr.sql", "0003_staff_bars_packs_events.sql", "0004_finance_parties.sql", "0005_floor_plan.sql", "0006_registers_buzzer.sql"]) {
+      for (const stmt of statements(f)) await pg.exec(stmt);
+    }
+    await pg.exec(`
+      insert into employees (name, role, pin_hash) values ('Ταμίας', 'cashier', 'x');
+      insert into registers (name) values ('Ταμείο 1');
+      insert into cash_sessions (register_id, opened_by, opening_float_cents) values (1, 1, 5000);
+      insert into table_sessions (order_type, label, status, opened_by, source, buzzer_no) values ('takeaway', '#001 Κώστας', 'open', 1, 'qr', null), ('takeaway', 'β', 'closed', 1, 'till', 7);
+    `);
+    for (const stmt of statements("0007_shift_bar_qr_areas.sql")) await pg.exec(stmt);
+    const shifts = await pg.query<{ register_id: number; opening_float_cents: number; bar_station_id: number | null; qr_area_ids: number[]; closed_at: Date | null }>("select * from cash_sessions");
+    expect(shifts.rows.map((r) => [r.register_id, r.opening_float_cents, r.bar_station_id, r.qr_area_ids, r.closed_at])).toEqual([[1, 5000, null, [], null]]);
+    const sessions = await pg.query<{ label: string; status: string; source: string; buzzer_no: number | null; area_id: number | null }>("select label, status, source, buzzer_no, area_id from table_sessions order by id");
+    expect(sessions.rows).toEqual([
+      { label: "#001 Κώστας", status: "open", source: "qr", buzzer_no: null, area_id: null },
+      { label: "β", status: "closed", source: "till", buzzer_no: 7, area_id: null },
+    ]);
+    await pg.close();
   });
 
   it("εφαρμόζεται πάνω σε βάση με υπάρχουσες βάρδιες, λογαριασμούς και πληρωμές χωρίς να τις αλλάξει", async () => {

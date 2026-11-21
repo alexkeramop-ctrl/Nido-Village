@@ -67,7 +67,21 @@ function restoreCart(raw: unknown, menu: Menu): UiLine[] {
 
 type StoredCustomer = { name?: string; phone?: string };
 
-export function OrderClient({ menu, venueName, contact }: { menu: Menu; venueName: string; contact: VenueContact }) {
+export function OrderClient({
+  menu,
+  venueName,
+  contact,
+  area,
+  open,
+}: {
+  menu: Menu;
+  venueName: string;
+  contact: VenueContact;
+  /** Ο χώρος του QR (null όταν δεν υπάρχουν χώροι). */
+  area: { id: number; name: string } | null;
+  /** false: κανένα ταμείο δεν δέχεται τώρα QR από αυτόν τον χώρο· φαίνεται μόνο το μενού. */
+  open: boolean;
+}) {
   const { toast, element } = useToast();
   const [pending, start] = useTransition();
   // Το καλάθι ζει στο localStorage (null στον server -> άδειο καλάθι, ίδιο HTML σε server και client).
@@ -137,7 +151,7 @@ export function OrderClient({ menu, venueName, contact }: { menu: Menu; venueNam
   };
 
   const tapProduct = (p: MenuProduct) => {
-    if (!p.available) return;
+    if (!p.available || !open) return;
     if (p.modifierGroups.length) setConfigProduct(p);
     else addLine({ productId: p.id, name: p.name, unitPriceCents: p.priceCents, qty: 1, notes: "", modifiers: [] });
   };
@@ -159,7 +173,7 @@ export function OrderClient({ menu, venueName, contact }: { menu: Menu; venueNam
       // οπότε καθαρίζουμε το καλάθι πριν την κλήση και το επαναφέρουμε μόνο αν η αποστολή αποτύχει.
       setStoredJson(CART_KEY, null);
       try {
-        const r = await placeQrOrderAction({ customerName: n, customerPhone: ph || null, notes: orderNotes.trim() || null, lines });
+        const r = await placeQrOrderAction({ areaId: area?.id ?? null, customerName: n, customerPhone: ph || null, notes: orderNotes.trim() || null, lines });
         if (r && !r.ok) {
           setStoredJson(CART_KEY, snapshot);
           toast(r.error, "danger");
@@ -182,8 +196,15 @@ export function OrderClient({ menu, venueName, contact }: { menu: Menu; venueNam
               <div className="text-[11px] uppercase tracking-widest text-ink-3 font-semibold truncate">{venueName}</div>
               <h1 className="text-xl font-bold leading-tight text-brand">Παραγγελία για παραλαβή</h1>
             </div>
+            {area && <span className="chip bg-brand-soft text-brand-2 ml-auto shrink-0" data-testid="order-area">{area.name}</span>}
           </div>
-          <p className="text-xs text-ink-2 mt-2">Παράγγειλε εδώ και πέρασε από το ταμείο να πληρώσεις και να πάρεις βομβητή.</p>
+          {open ? (
+            <p className="text-xs text-ink-2 mt-2">Παράγγειλε εδώ και πέρασε από το ταμείο να πληρώσεις και να πάρεις βομβητή.</p>
+          ) : (
+            <p role="status" className="mt-2 rounded-xl bg-warn-soft text-warn px-3 py-2 text-sm font-medium" data-testid="order-closed">
+              Οι παραγγελίες από το κινητό {area ? `για «${area.name}» ` : ""}δεν είναι ανοιχτές αυτή τη στιγμή. Δες το μενού και παράγγειλε στο ταμείο.
+            </p>
+          )}
         </header>
         {menu.length > 0 && (
           <nav aria-label="Κατηγορίες" className="bg-surface-2 border-b border-line">
@@ -229,8 +250,9 @@ export function OrderClient({ menu, venueName, contact }: { menu: Menu; venueNam
                     <li key={p.id}>
                       <button
                         type="button"
+                        disabled={!open}
                         onClick={() => tapProduct(p)}
-                        className="w-full text-left px-4 py-3.5 flex items-center gap-3 touch transition active:bg-surface-3"
+                        className="w-full text-left px-4 py-3.5 flex items-center gap-3 touch transition active:bg-surface-3 disabled:active:bg-transparent disabled:cursor-default"
                       >
                         <div className="min-w-0 flex-1">
                           <div className="font-semibold leading-snug">{p.name}</div>
@@ -253,7 +275,7 @@ export function OrderClient({ menu, venueName, contact }: { menu: Menu; venueNam
         <ContactFooter contact={contact} className="pt-2" />
       </main>
 
-      {menu.length > 0 && (
+      {menu.length > 0 && open && (
         <div
           className="fixed bottom-0 inset-x-0 z-30 bg-surface-2 border-t border-line"
           style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
@@ -273,7 +295,7 @@ export function OrderClient({ menu, venueName, contact }: { menu: Menu; venueNam
         </div>
       )}
 
-      <Modal open={cartOpen} onClose={() => setCartOpen(false)} title="Το καλάθι σου">
+      <Modal open={cartOpen && open} onClose={() => setCartOpen(false)} title="Το καλάθι σου">
         <div className="space-y-4">
           {cart.length === 0 ? (
             <p className="text-sm text-ink-3 py-6 text-center">Το καλάθι είναι άδειο. Διάλεξε κάτι από το μενού.</p>

@@ -227,8 +227,11 @@ export async function recordOrderSlip(input: { sessionId: number; orderId: numbe
   });
 }
 
-/** Αποστολή γύρου παραγγελίας: εγγραφή, αφαίρεση αποθέματος, δελτίο παραγγελίας, εκτύπωση κουζίνας. */
-export async function sendRound(sessionId: number, cart: CartLine[], employeeId: number, notes?: string | null) {
+/**
+ * Αποστολή γύρου παραγγελίας: εγγραφή, αφαίρεση αποθέματος, δελτίο παραγγελίας, εκτύπωση κουζίνας.
+ * opts.barStationId: το μπαρ για τα ροφήματα (π.χ. της βάρδιας του ταμείου που δέχεται το QR)· αλλιώς το μπαρ του χώρου του τραπεζιού.
+ */
+export async function sendRound(sessionId: number, cart: CartLine[], employeeId: number, notes?: string | null, opts: { barStationId?: number | null } = {}) {
   const db = await getDb();
   const lines = cart.filter((l) => l.qty > 0);
   if (!lines.length) throw new Error("Η παραγγελία είναι κενή");
@@ -256,8 +259,8 @@ export async function sendRound(sessionId: number, cart: CartLine[], employeeId:
       tableName,
       orderType: session.orderType,
       label: session.label,
-      // Ροφήματα: τυπώνονται στο μπαρ του χώρου όπου βρίσκεται το τραπέζι (αν έχει οριστεί).
-      areaBarStationId: session.table?.area?.barStationId ?? null,
+      // Ροφήματα: στο μπαρ που δόθηκε (QR → μπαρ του ταμείου που το δέχεται), αλλιώς στο μπαρ του χώρου του τραπεζιού.
+      areaBarStationId: opts.barStationId ?? session.table?.area?.barStationId ?? null,
       buzzerNo: session.buzzerNo,
       customerName: session.customerName,
       typeLabel: session.source === "till" ? TILL_TYPE_LABEL : null,

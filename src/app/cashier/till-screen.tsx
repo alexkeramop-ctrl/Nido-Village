@@ -15,7 +15,7 @@ import type { SaleResult, TillSnapshot } from "@/server/services/till";
 import { quickSaleAction, selectRegisterAction } from "./actions";
 import { OrdersSheet } from "./pending-list";
 import { PayPanel } from "./pay-panel";
-import { CloseShiftModal, ShiftReport } from "./shift-panels";
+import { CloseShiftModal, ShiftReport, ShiftSetupModal, setupLabel } from "./shift-panels";
 
 const TOP = "top" as const;
 const FREQUENT_COUNT = 12;
@@ -83,6 +83,7 @@ export function TillScreen({
   const [sheetOpen, setSheetOpen] = useState(false);
   const [ordersOpen, setOrdersOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
   const [discountOpen, setDiscountOpen] = useState(false);
   const [closed, setClosed] = useState<ShiftDto | null>(null);
   const submitting = useRef(false);
@@ -252,6 +253,15 @@ export function TillScreen({
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-1.5 ml-auto">
+          <button
+            type="button"
+            className="btn-ghost btn-sm text-xs! max-w-[18rem] truncate"
+            onClick={() => setSetupOpen(true)}
+            aria-label={`Μπαρ και QR: ${setupLabel(shift)}`}
+            title="Αλλαγή μπαρ και χώρων QR"
+          >
+            {setupLabel(shift)}
+          </button>
           <button type="button" className={`btn btn-sm border ${pendingCount ? "bg-warn-soft text-warn border-warn/40" : "bg-white/70 text-ink border-line"}`} onClick={() => setOrdersOpen(true)}>
             Προς πληρωμή ({pendingCount})
           </button>
@@ -582,6 +592,19 @@ export function TillScreen({
             }
             toast(sale.changeCents > 0 ? `Πληρώθηκε · ${sale.displayNo} · ρέστα ${formatEuro(sale.changeCents)}` : `Πληρώθηκε · ${sale.displayNo}`);
             refreshSoon();
+          }}
+        />
+      )}
+
+      {setupOpen && (
+        <ShiftSetupModal
+          registerId={register.id}
+          shift={shift}
+          onClose={() => setSetupOpen(false)}
+          onSaved={(message) => {
+            setSetupOpen(false);
+            toast(message);
+            void refresh();
           }}
         />
       )}

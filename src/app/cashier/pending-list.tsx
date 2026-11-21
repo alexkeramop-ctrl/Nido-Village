@@ -93,7 +93,7 @@ export function OrdersSheet({
                         <Money cents={o.dueCents} className="text-lg font-black shrink-0" />
                       </span>
                       <span className="mt-1.5 flex flex-wrap gap-1.5">
-                        {o.qr ? <Badge tone="brand">QR</Badge> : <Badge>Λογαριασμός</Badge>}
+                        {o.qr ? <Badge tone="brand">QR{o.areaName ? ` · ${o.areaName}` : ""}</Badge> : <Badge>Λογαριασμός</Badge>}
                         {o.ready && <Badge tone="ok">Έτοιμη</Badge>}
                         {o.partial && <Badge tone="warn">Μερική πληρωμή</Badge>}
                       </span>

@@ -1,7 +1,8 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/db";
-import { seeded, employeeByName, productByName, modifierByName } from "./helpers";
+import { seeded, employeeByName, productByName, modifierByName, areaByName, stationByName } from "./helpers";
+import { listRegisters, openRegisterShift } from "@/server/services/registers";
 import { placeQrOrder, getPublicOrder, listPickupBoard, markPickedUp, getPublicMenu, getSessionIdForToken, QR_EMPLOYEE_NAME } from "@/server/services/public-order";
 import { bumpOrder, getKdsTickets, sendRound } from "@/server/services/ordering";
 import { addPayment } from "@/server/services/billing";
@@ -9,8 +10,15 @@ import { getFloor, saveTablePositions, saveFloorLayout, saveAreaPlan, autoLayout
 import { saveAsset, getAsset } from "@/server/services/assets";
 import { loginWithPin } from "@/server/auth";
 
+let qrArea: number;
+
 beforeAll(async () => {
   await seeded();
+  // Οι παραγγελίες QR γίνονται δεκτές μόνο όταν ένα ανοιχτό ταμείο δέχεται τον χώρο τους.
+  qrArea = (await areaByName("Κέντρο")).id;
+  const [r1] = await listRegisters();
+  const cashier = await employeeByName("Νίκος");
+  await openRegisterShift(r1.id, 0, cashier.id, { barStationId: (await stationByName("Μπαρ Κέντρο")).id, qrAreaIds: [qrArea] });
 });
 
 describe("QR takeaway ordering", () => {
@@ -20,11 +28,12 @@ describe("QR takeaway ordering", () => {
     expect(menu.length).toBeGreaterThan(3);
     const brizola = await productByName("Classic Burger");
     const medium = await modifierByName("Extra τυρί");
-    await expect(placeQrOrder({ customerName: "K", lines: [{ productId: brizola.id, qty: 1 }] })).rejects.toThrow(/όνομ/);
-    await expect(placeQrOrder({ customerName: "Κώστας", lines: [] })).rejects.toThrow(/άδειο/);
-    await expect(placeQrOrder({ customerName: "Κώστας", customerPhone: "123", lines: [{ productId: brizola.id, qty: 1 }] })).rejects.toThrow(/τηλέφωνο/);
+    await expect(placeQrOrder({ areaId: qrArea, customerName: "K", lines: [{ productId: brizola.id, qty: 1 }] })).rejects.toThrow(/όνομ/);
+    await expect(placeQrOrder({ areaId: qrArea, customerName: "Κώστας", lines: [] })).rejects.toThrow(/άδειο/);
+    await expect(placeQrOrder({ areaId: qrArea, customerName: "Κώστας", customerPhone: "123", lines: [{ productId: brizola.id, qty: 1 }] })).rejects.toThrow(/τηλέφωνο/);
 
     const r = await placeQrOrder({
+      areaId: qrArea,
       customerName: "Κώστας",
       customerPhone: "69 1234 5678",
       notes: "Χωρίς πατάτες",
@@ -71,14 +80,14 @@ describe("QR takeaway ordering", () => {
     expect(o.paid).toBe(true);
 
     // second order of the day gets the next code
-    const r2 = await placeQrOrder({ customerName: "Ελένη", lines: [{ productId: brizola.id, qty: 1 }] });
+    const r2 = await placeQrOrder({ areaId: qrArea, customerName: "Ελένη", lines: [{ productId: brizola.id, qty: 1 }] });
     expect(r2.code).toBe("002");
     expect(await getPublicOrder("nope")).toBeNull();
   });
 
   it("a new round after ready resets readiness", async () => {
     const brizola = await productByName("Classic Burger");
-    const r = await placeQrOrder({ customerName: "Γιάννης", lines: [{ productId: brizola.id, qty: 1 }] });
+    const r = await placeQrOrder({ areaId: qrArea, customerName: "Γιάννης", lines: [{ productId: brizola.id, qty: 1 }] });
     const t = (await getKdsTickets()).find((x) => x.sessionId === r.sessionId)!;
     await bumpOrder(t.orderId);
     expect((await getPublicOrder(r.token))!.status).toBe("ready");

@@ -11,6 +11,7 @@ import { getMenu } from "./catalog";
 import { openSession, sendRound, type CartLine } from "./ordering";
 import { getSessionDetail, lineTotalCents } from "./billing";
 import { athensDayStart, todayAthens } from "./reports";
+import { qrAreaOwners } from "./registers";
 
 export const QR_EMPLOYEE_NAME = "Πελάτης QR";
 const MAX_LINES = 30;
@@ -46,7 +47,26 @@ async function nextPickupCode(): Promise<string> {
   return String((n ?? 0) + 1).padStart(3, "0");
 }
 
+/** Ένας χώρος για τα QR και αν τον δέχεται τώρα κάποιο ανοιχτό ταμείο. */
+export type QrAreaStatus = { id: number; name: string; open: boolean };
+
+/** Οι ενεργοί χώροι (με τη σειρά τους) και ποιοι δέχονται παραγγελίες QR αυτή τη στιγμή. */
+export async function qrAreasStatus(): Promise<QrAreaStatus[]> {
+  const db = await getDb();
+  const [areas, owners] = await Promise.all([
+    db
+      .select({ id: schema.areas.id, name: schema.areas.name })
+      .from(schema.areas)
+      .where(eq(schema.areas.active, true))
+      .orderBy(asc(schema.areas.sort), asc(schema.areas.id)),
+    qrAreaOwners(db),
+  ]);
+  return areas.map((a) => ({ ...a, open: owners.has(a.id) }));
+}
+
 export type QrOrderInput = {
+  /** Ο χώρος του QR (/order?a=…). Υποχρεωτικός όταν υπάρχουν πολλοί χώροι. */
+  areaId?: number | null;
   customerName: string;
   customerPhone?: string | null;
   notes?: string | null;
@@ -63,14 +83,28 @@ export async function placeQrOrder(input: QrOrderInput) {
   if (lines.length > MAX_LINES) throw new Error("Πάρα πολλά είδη σε μία παραγγελία");
   if (lines.some((l) => l.qty > MAX_QTY)) throw new Error(`Έως ${MAX_QTY} τεμάχια ανά είδος`);
 
+  // Ο χώρος: η παραγγελία πάει στο ταμείο που τον δέχεται και τα ροφήματα στο μπαρ αυτού του ταμείου.
   const db = await getDb();
+  const [areas, owners] = await Promise.all([qrAreasStatus(), qrAreaOwners(db)]);
+  let areaId = input.areaId === null || input.areaId === undefined ? null : Number(input.areaId);
+  if (areaId === null && areas.length === 1) areaId = areas[0].id;
+  if (areaId === null && areas.length > 1) throw new Error("Διάλεξε πού κάθεσαι για να σταλεί η παραγγελία");
+  let barStationId: number | null = null;
+  if (areaId !== null) {
+    const area = areas.find((a) => a.id === areaId);
+    if (!area) throw new Error("Ο χώρος δεν βρέθηκε");
+    const owner = owners.get(areaId);
+    if (!owner) throw new Error(`Οι παραγγελίες από το κινητό για «${area.name}» δεν είναι ανοιχτές αυτή τη στιγμή. Παράγγειλε στο ταμείο.`);
+    barStationId = owner.barStationId;
+  }
+
   const employeeId = await getQrEmployeeId();
   const code = await nextPickupCode();
   const token = randomBytes(18).toString("base64url");
   const session = await openSession({ orderType: "takeaway", label: `#${code} ${name}` }, employeeId);
   await db
     .update(schema.tableSessions)
-    .set({ source: "qr", publicToken: token, pickupCode: code, customerName: name, customerPhone: phone || null })
+    .set({ source: "qr", publicToken: token, pickupCode: code, customerName: name, customerPhone: phone || null, areaId })
     .where(eq(schema.tableSessions.id, session.id));
   try {
     await sendRound(
@@ -78,6 +112,7 @@ export async function placeQrOrder(input: QrOrderInput) {
       lines.map((l) => ({ productId: l.productId, qty: Math.min(MAX_QTY, Math.round(l.qty)), modifierIds: l.modifierIds ?? [], notes: l.notes?.slice(0, 120) ?? null, course: 1 })),
       employeeId,
       input.notes?.trim().slice(0, 200) || null,
+      { barStationId },
     );
   } catch (e) {
     // Άκυρη παραγγελία: ακυρώνουμε τη συνεδρία που ανοίξαμε για να μη μείνει ορφανή.

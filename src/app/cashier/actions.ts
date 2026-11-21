@@ -10,7 +10,17 @@ import type { TenderInput } from "@/lib/tender";
 import { addPayment, applyDiscount, printBill } from "@/server/services/billing";
 import type { CartLine } from "@/server/services/ordering";
 import { markPickedUp } from "@/server/services/public-order";
-import { closeRegisterShift, listRegisters, openRegisterShift, toShiftDto, type ShiftDto } from "@/server/services/registers";
+import {
+  closeRegisterShift,
+  listRegisters,
+  openRegisterShift,
+  shiftSetupOptions,
+  toShiftDto,
+  updateShiftSetup,
+  type ShiftDto,
+  type ShiftSetup,
+  type ShiftSetupOptions,
+} from "@/server/services/registers";
 import { payOrderAtTill, quickSale, type PayOrderInput, type QuickSaleInput, type SaleDiscount, type SaleResult } from "@/server/services/till";
 
 const ROLES: EmployeeRole[] = ["cashier", "manager", "admin"];
@@ -57,12 +67,35 @@ export async function selectRegisterAction(registerId: number | null): Promise<A
   });
 }
 
-export async function openShiftAction(registerId: number, openingFloatCents: number): Promise<ActionResult<{ id: number }>> {
+function cleanSetupInput(setup: Partial<ShiftSetup> | null | undefined): ShiftSetup {
+  const bar = setup?.barStationId === null || setup?.barStationId === undefined ? null : posInt(setup.barStationId) || null;
+  const areas = Array.isArray(setup?.qrAreaIds) ? setup.qrAreaIds.map(posInt).filter((n) => n > 0).slice(0, 50) : [];
+  return { barStationId: bar, qrAreaIds: areas };
+}
+
+/** Άνοιγμα βάρδιας με αρχικό ταμείο, μπαρ για τα ροφήματα και χώρους QR που δέχεται το ταμείο. */
+export async function openShiftAction(registerId: number, openingFloatCents: number, setup: ShiftSetup): Promise<ActionResult<{ id: number }>> {
   return run(async () => {
     const user = await requireRole(...ROLES);
-    const row = await openRegisterShift(posInt(registerId), cents(openingFloatCents), user.id);
+    const row = await openRegisterShift(posInt(registerId), cents(openingFloatCents), user.id, cleanSetupInput(setup));
     revalidatePath("/cashier");
     return { id: row.id };
+  });
+}
+
+/** Τα μπαρ και οι χώροι που μπορεί να διαλέξει το ταμείο (για την αλλαγή μέσα στη βάρδια). */
+export async function shiftSetupOptionsAction(registerId: number): Promise<ActionResult<ShiftSetupOptions>> {
+  return run(async () => {
+    await requireRole(...ROLES);
+    return shiftSetupOptions(posInt(registerId));
+  });
+}
+
+/** Αλλαγή μπαρ / χώρων QR σε ανοιχτή βάρδια. Επιστρέφει ποιο ταμείο έχασε χώρους (για ενημέρωση του ταμία). */
+export async function updateShiftSetupAction(cashSessionId: number, setup: ShiftSetup): Promise<ActionResult<{ registerName: string; areaIds: number[] }[]>> {
+  return run(async () => {
+    const user = await requireRole(...ROLES);
+    return updateShiftSetup(posInt(cashSessionId), cleanSetupInput(setup), user.id);
   });
 }
 

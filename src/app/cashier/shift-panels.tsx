@@ -1,11 +1,11 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { Badge, Field, Modal, Money, Numpad, useToast } from "@/components/ui";
 import { fmtDateTime, fmtTime, inputToCents } from "@/components/ops/labels";
-import type { ShiftDto } from "@/server/services/registers";
-import { closeShiftAction, openShiftAction, selectRegisterAction } from "./actions";
+import type { ShiftDto, ShiftSetup, ShiftSetupOptions } from "@/server/services/registers";
+import { closeShiftAction, openShiftAction, selectRegisterAction, shiftSetupOptionsAction, updateShiftSetupAction } from "./actions";
 
 export type RegisterDto = { id: number; name: string; openShift: { openedAt: string; openedBy: string } | null };
 
@@ -78,17 +78,146 @@ export function RegisterPicker({ registers, isAdmin }: { registers: RegisterDto[
   );
 }
 
+/* ------------------------------ Μπαρ και χώροι QR ------------------------------ */
+
+/** Τι λείπει από τις επιλογές (null = εντάξει). */
+function setupProblem(options: ShiftSetupOptions, setup: ShiftSetup): string | null {
+  if (options.bars.length && setup.barStationId === null) return "Διάλεξε σε ποιο μπαρ θα βγαίνουν τα ροφήματα";
+  return null;
+}
+
+/**
+ * Επιλογές της βάρδιας: σε ποιο μπαρ βγαίνουν τα ροφήματα και από ποιους χώρους δέχεται το ταμείο παραγγελίες QR.
+ * Ένας χώρος ανήκει σε ένα ταμείο τη φορά: αν τον έχει άλλο ταμείο, φαίνεται και μεταφέρεται εδώ μόνο αν τον διαλέξεις.
+ */
+export function ShiftSetupFields({ options, value, onChange, disabled }: { options: ShiftSetupOptions; value: ShiftSetup; onChange: (v: ShiftSetup) => void; disabled?: boolean }) {
+  const toggleArea = (id: number) =>
+    onChange({ ...value, qrAreaIds: value.qrAreaIds.includes(id) ? value.qrAreaIds.filter((a) => a !== id) : [...value.qrAreaIds, id].sort((a, b) => a - b) });
+  return (
+    <div className="space-y-4">
+      {options.bars.length > 0 && (
+        <div>
+          <div className="label" id="setup-bar">
+            Τα ροφήματα βγαίνουν στο
+          </div>
+          <div role="group" aria-labelledby="setup-bar" className="grid grid-cols-2 gap-2">
+            {options.bars.map((b) => {
+              const on = value.barStationId === b.id;
+              return (
+                <button key={b.id} type="button" aria-pressed={on} disabled={disabled} onClick={() => onChange({ ...value, barStationId: b.id })} className={`${on ? "btn-primary" : "btn-secondary"} px-2!`}>
+                  {b.name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      {options.areas.length > 0 && (
+        <div>
+          <div className="label" id="setup-qr">
+            Παραγγελίες QR από
+          </div>
+          <div role="group" aria-labelledby="setup-qr" className="grid grid-cols-2 gap-2">
+            {options.areas.map((a) => {
+              const on = value.qrAreaIds.includes(a.id);
+              return (
+                <button
+                  key={a.id}
+                  type="button"
+                  aria-pressed={on}
+                  disabled={disabled}
+                  onClick={() => toggleArea(a.id)}
+                  className={`${on ? "btn-primary" : "btn-secondary"} flex-col! items-start! gap-0! px-3! py-2! text-left`}
+                >
+                  <span className="font-semibold">{on ? "✓ " : ""}{a.name}</span>
+                  {a.takenBy && <span className={`text-xs font-normal ${on ? "text-white/85" : "text-ink-3"}`}>{on ? `θα μεταφερθεί από ${a.takenBy}` : `τώρα: ${a.takenBy}`}</span>}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-xs text-ink-3 mt-1.5">
+            {value.qrAreaIds.length === 0
+              ? "Αυτό το ταμείο δεν θα δέχεται παραγγελίες από QR."
+              : "Οι παραγγελίες QR αυτών των χώρων θα εμφανίζονται μόνο εδώ και τα ροφήματά τους θα βγαίνουν στο μπαρ αυτού του ταμείου."}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Αλλαγή μπαρ / χώρων QR μέσα στη βάρδια (π.χ. το άλλο ταμείο κλείνει και αυτό αναλαμβάνει τον χώρο του). */
+export function ShiftSetupModal({ registerId, shift, onClose, onSaved }: { registerId: number; shift: ShiftDto; onClose: () => void; onSaved: (message: string) => void }) {
+  const { toast, element } = useToast();
+  const [pending, start] = useTransition();
+  const [options, setOptions] = useState<ShiftSetupOptions | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [value, setValue] = useState<ShiftSetup>({ barStationId: shift.barStationId, qrAreaIds: shift.qrAreas.map((a) => a.id) });
+  // Οι επιλογές φορτώνονται τη στιγμή που ανοίγει το παράθυρο: δείχνουν ποιο ταμείο έχει τώρα κάθε χώρο.
+  useEffect(() => {
+    let alive = true;
+    shiftSetupOptionsAction(registerId).then(
+      (r) => {
+        if (!alive) return;
+        if (r.ok) {
+          setOptions(r.data);
+          setValue(r.data.current);
+        } else setLoadError(r.error);
+      },
+      () => alive && setLoadError("Πρόβλημα σύνδεσης. Δοκίμασε ξανά."),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [registerId]);
+  const save = () => {
+    if (!options) return;
+    const problem = setupProblem(options, value);
+    if (problem) return toast(problem, "danger");
+    start(async () => {
+      const r = await updateShiftSetupAction(shift.id, value);
+      if (!r.ok) return toast(r.error, "danger");
+      const names = (ids: number[]) => ids.map((id) => options.areas.find((a) => a.id === id)?.name ?? "").filter(Boolean).join(", ");
+      onSaved(r.data.length ? `Αποθηκεύτηκε · ${r.data.map((m) => `${names(m.areaIds)} από ${m.registerName}`).join(" · ")}` : "Αποθηκεύτηκε");
+    });
+  };
+  return (
+    <Modal open onClose={onClose} title={`Μπαρ και QR · ${shift.registerName}`}>
+      {options ? (
+        <div className="space-y-4">
+          <ShiftSetupFields options={options} value={value} onChange={setValue} disabled={pending} />
+          <button type="button" className="btn-primary w-full" disabled={pending} onClick={save}>
+            {pending ? "Αποθήκευση…" : "Αποθήκευση"}
+          </button>
+        </div>
+      ) : (
+        <p className={`text-sm py-6 text-center ${loadError ? "text-danger" : "text-ink-3"}`}>{loadError ?? "Φόρτωση…"}</p>
+      )}
+      {element}
+    </Modal>
+  );
+}
+
+/** Σύντομη περιγραφή για τη μπάρα του ταμείου: «Μπαρ Κέντρο · QR: Παιδική». */
+export function setupLabel(shift: ShiftDto): string {
+  const qr = shift.qrAreas.length ? shift.qrAreas.map((a) => a.name).join(", ") : "κανένας χώρος";
+  return `${shift.barName ?? "Μπαρ κατηγορίας"} · QR: ${qr}`;
+}
+
 /* ------------------------------ Άνοιγμα βάρδιας ------------------------------ */
 
-export function OpenShiftPanel({ register, canSwitch }: { register: { id: number; name: string }; canSwitch: boolean }) {
+export function OpenShiftPanel({ register, canSwitch, options }: { register: { id: number; name: string }; canSwitch: boolean; options: ShiftSetupOptions }) {
   const { toast, element } = useToast();
   const [pending, start] = useTransition();
   const [value, setValue] = useState("");
+  const [setup, setSetup] = useState<ShiftSetup>(options.current);
   const cents = value.trim() ? inputToCents(value) : 0;
   const open = () => {
     if (cents === null) return toast("Μη έγκυρο ποσό", "danger");
+    const problem = setupProblem(options, setup);
+    if (problem) return toast(problem, "danger");
     start(async () => {
-      const r = await openShiftAction(register.id, cents);
+      const r = await openShiftAction(register.id, cents, setup);
       if (!r.ok) toast(r.error, "danger");
     });
   };
@@ -107,6 +236,7 @@ export function OpenShiftPanel({ register, canSwitch }: { register: { id: number
           </div>
           <Badge>Κλειστό</Badge>
         </div>
+        <ShiftSetupFields options={options} value={setup} onChange={setSetup} disabled={pending} />
         <Field label="Αρχικό ταμείο (ρέστα) σε €">
           <input
             className="input num text-2xl! font-bold text-right"
@@ -187,6 +317,12 @@ export function CloseShiftModal({ shift, blocked, onClose, onClosed }: { shift: 
             Βάρδια από <span className="num">{fmtDateTime(shift.openedAt)}</span> · {shift.openedBy}
           </p>
           <ShiftFigures shift={shift} />
+          {shift.qrAreas.length > 0 && (
+            <p className="rounded-xl bg-surface-3 text-ink-2 px-3 py-2 text-sm">
+              Μετά το κλείσιμο δεν θα γίνονται δεκτές παραγγελίες QR από: <span className="font-semibold">{shift.qrAreas.map((a) => a.name).join(", ")}</span>, εκτός αν τις αναλάβει
+              άλλο ταμείο (κουμπί «Μπαρ και QR»).
+            </p>
+          )}
           {blocked && <p className="rounded-xl bg-warn-soft text-warn px-3 py-2 text-sm font-medium">{blocked}</p>}
         </div>
         <div className="space-y-3">

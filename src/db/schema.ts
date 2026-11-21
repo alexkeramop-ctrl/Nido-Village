@@ -250,6 +250,8 @@ export const tableSessions = pgTable(
     buzzerNo: integer(),
     /** Κλειδί της συσκευής για μία πώληση: το ίδιο κλειδί δεν δημιουργεί δεύτερη πώληση (διπλό πάτημα / επανάληψη). */
     clientRef: text().unique(),
+    /** Ο χώρος από τον οποίο έγινε η παραγγελία QR (το QR του χώρου). null = παλιό κοινό QR. */
+    areaId: integer().references(() => areas.id),
   },
   (t) => [index("sessions_status_idx").on(t.status), index("sessions_table_idx").on(t.tableId)],
 );
@@ -377,6 +379,10 @@ export const cashSessions = pgTable(
     countedCashCents: integer(),
     expectedCashCents: integer(),
     notes: text(),
+    /** Το μπαρ που διάλεξε το ταμείο στο άνοιγμα: εκεί βγαίνουν τα ροφήματα των πωλήσεών του και των QR που δέχεται. null = μπαρ της κατηγορίας. */
+    barStationId: integer().references(() => printStations.id),
+    /** Οι χώροι των οποίων τις παραγγελίες QR δέχεται το ταμείο σε αυτή τη βάρδια (κάθε χώρος σε ένα ανοιχτό ταμείο τη φορά). */
+    qrAreaIds: jsonb().$type<number[]>().notNull().default([]),
   },
   (t) => [
     index("cash_sessions_register_idx").on(t.registerId),
@@ -655,6 +661,7 @@ export const productModifierGroupsRelations = relations(productModifierGroups, (
 }));
 export const tableSessionsRelations = relations(tableSessions, ({ one, many }) => ({
   table: one(tables, { fields: [tableSessions.tableId], references: [tables.id] }),
+  area: one(areas, { fields: [tableSessions.areaId], references: [areas.id] }),
   openedByEmployee: one(employees, { fields: [tableSessions.openedBy], references: [employees.id] }),
   orders: many(orders),
   items: many(orderItems),
@@ -685,6 +692,7 @@ export const cashSessionsRelations = relations(cashSessions, ({ one, many }) => 
   register: one(registers, { fields: [cashSessions.registerId], references: [registers.id] }),
   openedByEmployee: one(employees, { fields: [cashSessions.openedBy], references: [employees.id] }),
   closedByEmployee: one(employees, { fields: [cashSessions.closedBy], references: [employees.id] }),
+  barStation: one(printStations, { fields: [cashSessions.barStationId], references: [printStations.id] }),
   payments: many(payments),
 }));
 export const ingredientsRelations = relations(ingredients, ({ one, many }) => ({

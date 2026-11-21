@@ -42,3 +42,17 @@ export async function tableByName(name: string) {
   if (!t) throw new Error("no table " + name);
   return t;
 }
+
+export async function areaByName(name: string) {
+  const db = await getDb();
+  const a = await db.query.areas.findFirst({ where: eq(schema.areas.name, name) });
+  if (!a) throw new Error("no area " + name);
+  return a;
+}
+
+export async function stationByName(name: string) {
+  const db = await getDb();
+  const s = await db.query.printStations.findFirst({ where: eq(schema.printStations.name, name) });
+  if (!s) throw new Error("no station " + name);
+  return s;
+}
