@@ -1,7 +1,7 @@
 // End-to-end έλεγχος με Playwright πάνω στα δεδομένα επίδειξης (src/db/seed.ts):
 //  1. PDA: ο σερβιτόρος ανοίγει το Κ2 και στέλνει παραγγελία
 //  2. Διαχείριση: ημερολόγια (/admin/trips, /admin/parties, /admin/ceremonies, /admin/events) — νέα εκδρομή, νέο πάρτι με σύμπτωση ώρας
-//  3. Προσωπικό: /pda/trips (χωρίς τηλέφωνο/τιμή για σερβιτόρο), όχι πρόσβαση στη Διαχείριση
+//  3. Προσωπικό: ημερολόγιο /pda/calendar με φίλτρα (χωρίς τηλέφωνο/τιμές για σερβιτόρο), παλιό /pda/trips, όχι πρόσβαση στη Διαχείριση
 //  4. Κουζίνα: «ΕΤΟΙΜΟ» για το Κ2
 //  5. Ταμείο self-service: επιλογή ταμείου, άνοιγμα βάρδιας, γρήγορη πώληση (μετρητά + ρέστα, κάρτα), βομβητής σε χρήση,
 //     πληρωμή του Κ2 από τα «Προς πληρωμή»
@@ -250,33 +250,55 @@ try {
     check(!(await text(admin.locator("[data-testid=month-grid]"))).includes(PARTY.title), "trips: φαίνεται το πάρτι στο ημερολόγιο εκδρομών");
   });
 
-  await step("Προσωπικό: /pda/trips", async () => {
-    await waiter.getByRole("navigation", { name: "Κύριο μενού" }).getByRole("link", { name: "Εκδρομές" }).click();
-    await waiter.waitForURL(/\/pda\/trips/);
+  await step("Προσωπικό: ημερολόγιο /pda/calendar (φίλτρα, χωρίς τιμές και τηλέφωνα)", async () => {
+    const nav = (page) => page.getByRole("navigation", { name: "Κύριο μενού" });
+    const list = waiter.locator("[data-testid=calendar-list]");
+    const article = (title) => list.locator("article", { hasText: title });
+    const filter = async (label, s) => {
+      await waiter.getByRole("navigation", { name: "Είδος εκδήλωσης" }).getByRole("link", { name: label, exact: true }).click();
+      await waiter.waitForURL((u) => (s ? u.searchParams.get("s") === s : !u.searchParams.has("s")));
+      await hydrated(waiter);
+      await checkNoError(waiter, `/pda/calendar ${label}`);
+    };
+
+    await nav(waiter).getByRole("link", { name: "Ημερολόγιο" }).click();
+    await waiter.waitForURL(/\/pda\/calendar/);
     await hydrated(waiter);
-    await checkNoError(waiter, "/pda/trips");
-    await waiter.locator("[data-testid=next-trip]").waitFor();
-    check((await text(waiter.locator("[data-testid=next-trip]"))).includes("Σήμερα"), "pda/trips: η επόμενη εκδρομή δεν είναι «Σήμερα»");
-    const card = waiter.locator("[data-testid=trips-list] article", { hasText: TRIP.title });
-    await card.waitFor();
-    const c = await text(card);
-    check(c.includes("12:00–16:00"), "pda/trips: λάθος ώρες εκδρομής");
-    check(c.includes(`${TRIP.guests} άτομα`), "pda/trips: λάθος αριθμός ατόμων");
-    check(c.includes("Επιβεβαιωμένο"), "pda/trips: η εκδρομή δεν φαίνεται επιβεβαιωμένη");
-    check(c.includes(TRIP.menu), "pda/trips: λείπει το μενού");
-    const body = await text(waiter.locator("body"));
-    check(!body.includes(TRIP.phone), "pda/trips: ο σερβιτόρος βλέπει το τηλέφωνο του πελάτη");
-    check(!body.includes("250,00"), "pda/trips: ο σερβιτόρος βλέπει την τιμή");
-    check(!body.includes(PARTY.title), "pda/trips: φαίνεται το πάρτι");
-    check((await waiter.getByRole("link", { name: /Νέα εκδρομή ή αλλαγή/ }).count()) === 0, "pda/trips: ο σερβιτόρος έχει σύνδεσμο προς τη Διαχείριση");
-    await shot(waiter, "pda-trips");
+    await checkNoError(waiter, "/pda/calendar");
+    // «Όλα»: και η εκδρομή και το πάρτι. Επόμενη εκδήλωση: το πάρτι στις 11:00.
+    const next = await text(waiter.locator("[data-testid=next-event]"));
+    check(next.includes("Σήμερα") && next.includes(PARTY.title), `pda/calendar: λάθος «Επόμενη εκδήλωση» («${next.replace(/\s+/g, " ")}»)`);
+    const trip = await text(article(TRIP.title));
+    for (const v of ["Σχολική εκδρομή", "12:00–16:00", `${TRIP.guests} άτομα`, "Επιβεβαιωμένο", TRIP.menu, "Επικοινωνία: Δημοτικό Θέρμης"]) check(trip.includes(v), `pda/calendar: η εκδρομή δεν δείχνει «${v}»`);
+    const party = await text(article(PARTY.title));
+    for (const v of ["Πάρτι", "15 παιδιά · 15 ενήλικες", PARTY.child, "Αίτημα"]) check(party.includes(v), `pda/calendar: το πάρτι δεν δείχνει «${v}»`);
+    const all = await text(list);
+    check(!all.includes(TRIP.phone), "pda/calendar: ο σερβιτόρος βλέπει το τηλέφωνο του πελάτη");
+    check(!all.includes("€"), "pda/calendar: ο σερβιτόρος βλέπει τιμές");
+    check((await waiter.getByRole("link", { name: /Νέα εκδήλωση ή αλλαγή/ }).count()) === 0, "pda/calendar: ο σερβιτόρος έχει σύνδεσμο προς τη Διαχείριση");
+    await shot(waiter, "pda-calendar");
+
+    await filter("Εκδρομές", "trips");
+    check((await article(TRIP.title).count()) === 1 && (await article(PARTY.title).count()) === 0, "pda/calendar: το φίλτρο «Εκδρομές» δεν δείχνει μόνο την εκδρομή");
+    await filter("Πάρτι", "parties");
+    check((await article(PARTY.title).count()) === 1 && (await article(TRIP.title).count()) === 0, "pda/calendar: το φίλτρο «Πάρτι» δεν δείχνει μόνο το πάρτι");
+    await filter("Γάμοι & Βαπτίσεις", "ceremonies");
+    check((await article(PARTY.title).count()) === 0 && (await article(TRIP.title).count()) === 0, "pda/calendar: το φίλτρο «Γάμοι & Βαπτίσεις» δείχνει πάρτι ή εκδρομή");
+    await filter("Όλα", null);
+
+    // Ο παλιός σύνδεσμος οδηγεί στο φίλτρο «Εκδρομές».
+    await waiter.goto(`${BASE}/pda/trips`);
+    const u = new URL(waiter.url());
+    check(u.pathname === "/pda/calendar" && u.searchParams.get("s") === "trips", `το /pda/trips δεν οδηγεί στις εκδρομές του ημερολογίου (${u.pathname}${u.search})`);
     await waiter.goto(`${BASE}/admin/trips`);
     check(!new URL(waiter.url()).pathname.startsWith("/admin"), "ο σερβιτόρος άνοιξε το /admin/trips");
 
+    // Ο υπεύθυνος: βλέπει τηλέφωνο και σύνδεσμο προς τη Διαχείριση· το «Ημερολόγιο» δεν είναι στο μενού του.
     await loginPin(kitchen, PIN.manager);
-    await visit(kitchen, "/pda/trips");
-    const mgr = await text(kitchen.locator("[data-testid=trips-list]"));
-    check(mgr.includes(TRIP.phone), "pda/trips: ο υπεύθυνος δεν βλέπει το τηλέφωνο");
+    await visit(kitchen, "/pda/calendar");
+    check((await text(kitchen.locator("[data-testid=calendar-list]"))).includes(TRIP.phone), "pda/calendar: ο υπεύθυνος δεν βλέπει το τηλέφωνο");
+    check((await kitchen.getByRole("link", { name: /Νέα εκδήλωση ή αλλαγή στη Διαχείριση/ }).count()) === 1, "pda/calendar: ο υπεύθυνος δεν έχει σύνδεσμο προς τη Διαχείριση");
+    check((await nav(kitchen).getByRole("link", { name: "Ημερολόγιο" }).count()) === 0, "μενού: ο υπεύθυνος βλέπει «Ημερολόγιο» (είναι μόνο για προσωπικό)");
   });
 
   await step("Κουζίνα: ΕΤΟΙΜΟ για το Κ2", async () => {
