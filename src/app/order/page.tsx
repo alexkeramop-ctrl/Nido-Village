@@ -4,6 +4,7 @@ import { shareMeta } from "@/server/share-meta";
 import { getSettings } from "@/server/services/settings";
 import { getPublicMenu, qrAreasStatus } from "@/server/services/public-order";
 import { Mark } from "@/components/brand";
+import { qrOrderingEnabled } from "@/server/features";
 import { OrderClient } from "./order-client";
 
 export const dynamic = "force-dynamic";
@@ -18,13 +19,15 @@ export async function generateMetadata(): Promise<Metadata> {
  * Δημόσια σελίδα παραγγελίας από QR. Χωρίς σύνδεση.
  * ?a=<χώρος>: το QR κάθε χώρου (π.χ. Παιδική χαρά). Η παραγγελία πάει στο ταμείο που δέχεται τον χώρο· αν κανένα δεν τον δέχεται,
  * ο πελάτης βλέπει το μενού αλλά παραγγέλνει στο ταμείο. Χωρίς ?a και με πολλούς χώρους: ο πελάτης διαλέγει πού κάθεται.
+ * Με κλειστές τις παραγγελίες QR (src/server/features.ts): μόνο το μενού, για κάθε χώρο.
  */
 export default async function OrderPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
   const raw = Array.isArray(sp.a) ? sp.a[0] : sp.a;
   const [menu, settings, areas] = await Promise.all([getPublicMenu(), getSettings(), qrAreasStatus()]);
-  const area = areas.find((a) => String(a.id) === raw) ?? (areas.length === 1 ? areas[0] : null);
-  if (!area && areas.length > 1) {
+  const enabled = qrOrderingEnabled();
+  const area = enabled ? (areas.find((a) => String(a.id) === raw) ?? (areas.length === 1 ? areas[0] : null)) : null;
+  if (enabled && !area && areas.length > 1) {
     return (
       <main className="flex-1 max-w-lg w-full mx-auto p-4 space-y-4">
         <header className="flex items-center gap-3">
@@ -53,7 +56,7 @@ export default async function OrderPage({ searchParams }: { searchParams: Promis
       menu={menu}
       venueName={settings.venueName}
       area={area ? { id: area.id, name: area.name } : null}
-      open={area ? area.open : true}
+      open={enabled && (area ? area.open : true)}
       contact={{ venueName: settings.venueName, address: settings.address, phone: settings.phone, email: settings.email }}
     />
   );

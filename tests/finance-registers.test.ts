@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { seeded, employeeByName, productByName, tableByName, areaByName, stationByName } from "./helpers";
 import { daySummary, listRegisters, openRegisterShift } from "@/server/services/registers";
 import { payOrderAtTill, quickSale, type TillEmployee } from "@/server/services/till";
@@ -10,7 +10,11 @@ import { salesByProduct, salesSummary, todayAthens, todayDashboard } from "@/ser
 
 let cashier: TillEmployee;
 
+// Οι παραγγελίες QR είναι κλειστές από προεπιλογή (src/server/features.ts): εδώ ελέγχεται η λειτουργία τους.
+afterAll(() => vi.unstubAllEnvs());
+
 beforeAll(async () => {
+  vi.stubEnv("NIDO_QR_ORDERING", "1");
   await seeded();
   const c = await employeeByName("Νίκος");
   cashier = { id: c.id, name: c.name, role: c.role };

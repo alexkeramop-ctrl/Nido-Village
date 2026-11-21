@@ -12,6 +12,7 @@ import { openSession, sendRound, type CartLine } from "./ordering";
 import { getSessionDetail, lineTotalCents } from "./billing";
 import { athensDayStart, todayAthens } from "./reports";
 import { qrAreaOwners } from "./registers";
+import { QR_ORDERING_OFF_MESSAGE, qrOrderingEnabled } from "@/server/features";
 
 export const QR_EMPLOYEE_NAME = "Πελάτης QR";
 const MAX_LINES = 30;
@@ -61,7 +62,8 @@ export async function qrAreasStatus(): Promise<QrAreaStatus[]> {
       .orderBy(asc(schema.areas.sort), asc(schema.areas.id)),
     qrAreaOwners(db),
   ]);
-  return areas.map((a) => ({ ...a, open: owners.has(a.id) }));
+  const enabled = qrOrderingEnabled();
+  return areas.map((a) => ({ ...a, open: enabled && owners.has(a.id) }));
 }
 
 export type QrOrderInput = {
@@ -74,6 +76,8 @@ export type QrOrderInput = {
 };
 
 export async function placeQrOrder(input: QrOrderInput) {
+  // Κλειστό μέχρι να συνδεθεί online πληρωμή: ο έλεγχος γίνεται εδώ, όχι μόνο στην οθόνη.
+  if (!qrOrderingEnabled()) throw new Error(QR_ORDERING_OFF_MESSAGE);
   const name = (input.customerName ?? "").trim();
   if (name.length < 2 || name.length > 40) throw new Error("Δώσε το όνομά σου (2–40 χαρακτήρες)");
   const phone = (input.customerPhone ?? "").replace(/\s+/g, "").trim();

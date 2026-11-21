@@ -39,9 +39,10 @@ export function QrClient({ venueName, qrs, pickupUrl, orders }: { venueName: str
   const { run, pending, toast, toastElement } = useActionRunner();
   const [copied, setCopied] = useState<string | null>(null);
   const [selectedKey, setSelectedKey] = useState(qrs[0]?.key ?? "all");
-  const selected = qrs.find((q) => q.key === selectedKey) ?? qrs[0];
-  const orderUrl = selected.url;
-  const qrDataUrl = selected.dataUrl;
+  // Χωρίς QR (κλειστές παραγγελίες από το κινητό) η σελίδα δείχνει μόνο την οθόνη παραλαβών και το ιστορικό.
+  const selected = qrs.find((q) => q.key === selectedKey) ?? qrs[0] ?? null;
+  const orderUrl = selected?.url ?? "";
+  const qrDataUrl = selected?.dataUrl ?? "";
 
   const copy = async (text: string) => {
     try {
@@ -62,63 +63,80 @@ export function QrClient({ venueName, qrs, pickupUrl, orders }: { venueName: str
       {toastElement}
       <style>{PRINT_CSS}</style>
       <PageHeader
-        title="QR & Παραλαβές"
-        subtitle="Οι πελάτες σκανάρουν το QR, παραγγέλνουν από το κινητό τους και πληρώνουν στο ταμείο όταν παραλάβουν."
+        title={selected ? "QR & Παραλαβές" : "Παραλαβές"}
+        subtitle={
+          selected
+            ? "Οι πελάτες σκανάρουν το QR, παραγγέλνουν από το κινητό τους και πληρώνουν στο ταμείο όταν παραλάβουν."
+            : "Οθόνη παραλαβών για τους βομβητές. Οι παραγγελίες από το κινητό (QR) είναι κλειστές μέχρι να συνδεθεί online πληρωμή."
+        }
         actions={
-          <>
-            <a href={qrDataUrl} download={`nido-qr-${selected.key}.png`} className="btn-secondary btn-sm">
-              Λήψη PNG
-            </a>
-            <button type="button" className="btn-primary btn-sm" onClick={() => window.print()}>
-              Εκτύπωση
-            </button>
-          </>
+          selected ? (
+            <>
+              <a href={qrDataUrl} download={`nido-qr-${selected.key}.png`} className="btn-secondary btn-sm">
+                Λήψη PNG
+              </a>
+              <button type="button" className="btn-primary btn-sm" onClick={() => window.print()}>
+                Εκτύπωση
+              </button>
+            </>
+          ) : undefined
         }
       />
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Section title="QR παραγγελίας">
-          {qrs.length > 1 && (
-            <div role="group" aria-label="QR για" className="flex flex-wrap gap-2 mb-3">
-              {qrs.map((q) => (
-                <button key={q.key} type="button" aria-pressed={q.key === selected.key} onClick={() => setSelectedKey(q.key)} className={`${q.key === selected.key ? "btn-primary" : "btn-secondary"} btn-sm`}>
-                  {q.label}
-                </button>
-              ))}
+        {!selected ? (
+          <Section title="Παραγγελίες από το κινητό">
+            <div data-testid="qr-off">
+              <InfoBox tone="warn">
+                Κλειστές μέχρι να συνδεθεί online πληρωμή. Οι πελάτες παραγγέλνουν στο ταμείο· αν κάποιος ανοίξει παλιό QR, βλέπει μόνο το μενού με μήνυμα να
+                παραγγείλει στο ταμείο.
+              </InfoBox>
             </div>
-          )}
-          {selected.open !== null && (
-            <p className="text-sm mb-3">
-              {selected.open ? (
-                <Badge tone="ok">Ανοιχτό: ένα ταμείο δέχεται τώρα «{selected.area}»</Badge>
-              ) : (
-                <Badge tone="warn">Κλειστό: κανένα ανοιχτό ταμείο δεν δέχεται «{selected.area}» (ο πελάτης βλέπει μόνο το μενού)</Badge>
-              )}
-            </p>
-          )}
-          <div className="flex flex-col sm:flex-row gap-4 items-start">
-            {/* eslint-disable-next-line @next/next/no-img-element -- data URL, δεν χρειάζεται βελτιστοποίηση */}
-            <img src={qrDataUrl} alt={`QR για ${orderUrl}`} width={192} height={192} className="w-48 h-48 rounded-xl border border-line bg-white shrink-0" data-testid="qr-image" />
-            <div className="min-w-0 flex-1 space-y-3">
-              <div>
-                <div className="label">Σύνδεσμος παραγγελίας</div>
-                <code className="block break-all rounded-lg bg-surface-3 px-3 py-2 text-sm">{orderUrl}</code>
+          </Section>
+        ) : (
+          <Section title="QR παραγγελίας">
+            {qrs.length > 1 && (
+              <div role="group" aria-label="QR για" className="flex flex-wrap gap-2 mb-3">
+                {qrs.map((q) => (
+                  <button key={q.key} type="button" aria-pressed={q.key === selected.key} onClick={() => setSelectedKey(q.key)} className={`${q.key === selected.key ? "btn-primary" : "btn-secondary"} btn-sm`}>
+                    {q.label}
+                  </button>
+                ))}
               </div>
-              <div className="flex flex-wrap gap-2">
-                <button type="button" className="btn-secondary btn-sm" onClick={() => copy(orderUrl)}>
-                  {copied === orderUrl ? "✓ Αντιγράφηκε" : "Αντιγραφή"}
-                </button>
-                <Link href={orderUrl} target="_blank" className="btn-secondary btn-sm">
-                  Άνοιγμα σε νέα καρτέλα ↗
-                </Link>
-              </div>
-              <p className="text-xs text-ink-3">
-                Το QR δείχνει στη διεύθυνση από την οποία άνοιξες αυτή τη σελίδα. Αν οι πελάτες θα μπαίνουν από άλλη διεύθυνση (π.χ. δημόσιο domain), άνοιξε τη διαχείριση από
-                εκείνη τη διεύθυνση πριν την εκτύπωση.
+            )}
+            {selected.open !== null && (
+              <p className="text-sm mb-3">
+                {selected.open ? (
+                  <Badge tone="ok">Ανοιχτό: ένα ταμείο δέχεται τώρα «{selected.area}»</Badge>
+                ) : (
+                  <Badge tone="warn">Κλειστό: κανένα ανοιχτό ταμείο δεν δέχεται «{selected.area}» (ο πελάτης βλέπει μόνο το μενού)</Badge>
+                )}
               </p>
+            )}
+            <div className="flex flex-col sm:flex-row gap-4 items-start">
+              {/* eslint-disable-next-line @next/next/no-img-element -- data URL, δεν χρειάζεται βελτιστοποίηση */}
+              <img src={qrDataUrl} alt={`QR για ${orderUrl}`} width={192} height={192} className="w-48 h-48 rounded-xl border border-line bg-white shrink-0" data-testid="qr-image" />
+              <div className="min-w-0 flex-1 space-y-3">
+                <div>
+                  <div className="label">Σύνδεσμος παραγγελίας</div>
+                  <code className="block break-all rounded-lg bg-surface-3 px-3 py-2 text-sm">{orderUrl}</code>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" className="btn-secondary btn-sm" onClick={() => copy(orderUrl)}>
+                    {copied === orderUrl ? "✓ Αντιγράφηκε" : "Αντιγραφή"}
+                  </button>
+                  <Link href={orderUrl} target="_blank" className="btn-secondary btn-sm">
+                    Άνοιγμα σε νέα καρτέλα ↗
+                  </Link>
+                </div>
+                <p className="text-xs text-ink-3">
+                  Το QR δείχνει στη διεύθυνση από την οποία άνοιξες αυτή τη σελίδα. Αν οι πελάτες θα μπαίνουν από άλλη διεύθυνση (π.χ. δημόσιο domain), άνοιξε τη διαχείριση από
+                  εκείνη τη διεύθυνση πριν την εκτύπωση.
+                </p>
+              </div>
             </div>
-          </div>
-        </Section>
+          </Section>
+        )}
 
         <Section title="Οθόνη παραλαβών">
           <div className="space-y-3">
@@ -142,17 +160,19 @@ export function QrClient({ venueName, qrs, pickupUrl, orders }: { venueName: str
         </Section>
       </div>
 
-      <Section title="Καρτέλα για το τραπέζι / ταμείο" actions={<span className="text-xs text-ink-3">Προεπισκόπηση εκτύπωσης · «Εκτύπωση» τυπώνει μόνο αυτό</span>}>
-        <div id="qr-tent" className="mx-auto max-w-sm rounded-2xl border-2 border-dashed border-[#cfcfc8] bg-white text-[#16181d] p-8 text-center space-y-4 [&_*]:text-[#16181d]">
-          <div className="text-3xl font-black tracking-tight">{venueName}</div>
-          <div className="text-lg font-semibold">Σκάναρε για παραγγελία take away</div>
-          {selected.area && <div className="text-2xl font-black">{selected.area}</div>}
-          {/* eslint-disable-next-line @next/next/no-img-element -- data URL */}
-          <img src={qrDataUrl} alt="" width={256} height={256} className="w-64 h-64 mx-auto" />
-          <div className="text-base font-mono break-all">{shortUrl(orderUrl)}</div>
-          <div className="text-sm text-ink-2">Παραγγέλνεις από το κινητό σου · Πληρώνεις στο ταμείο όταν παραλάβεις</div>
-        </div>
-      </Section>
+      {selected && (
+        <Section title="Καρτέλα για το τραπέζι / ταμείο" actions={<span className="text-xs text-ink-3">Προεπισκόπηση εκτύπωσης · «Εκτύπωση» τυπώνει μόνο αυτό</span>}>
+          <div id="qr-tent" className="mx-auto max-w-sm rounded-2xl border-2 border-dashed border-[#cfcfc8] bg-white text-[#16181d] p-8 text-center space-y-4 [&_*]:text-[#16181d]">
+            <div className="text-3xl font-black tracking-tight">{venueName}</div>
+            <div className="text-lg font-semibold">Σκάναρε για παραγγελία take away</div>
+            {selected.area && <div className="text-2xl font-black">{selected.area}</div>}
+            {/* eslint-disable-next-line @next/next/no-img-element -- data URL */}
+            <img src={qrDataUrl} alt="" width={256} height={256} className="w-64 h-64 mx-auto" />
+            <div className="text-base font-mono break-all">{shortUrl(orderUrl)}</div>
+            <div className="text-sm text-ink-2">Παραγγέλνεις από το κινητό σου · Πληρώνεις στο ταμείο όταν παραλάβεις</div>
+          </div>
+        </Section>
+      )}
 
       <Section title="Πρόσφατες παραγγελίες QR" flush actions={<span className="text-xs text-ink-3 num">{orders.length}</span>}>
         {orders.length === 0 ? (

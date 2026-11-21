@@ -1,14 +1,14 @@
 // End-to-end έλεγχος με Playwright πάνω στα δεδομένα επίδειξης (src/db/seed.ts), όπως δουλεύει το κατάστημα:
-// χωρίς σερβιτόρο, 2 ταμεία, 2 μπαρ (Κέντρο, Παιδική), 1 κουζίνα, παραγγελίες QR ανά χώρο που πληρώνονται στο ταμείο.
+// χωρίς σερβιτόρο, 2 ταμεία, 2 μπαρ (Κέντρο, Παιδική), 1 κουζίνα. Οι παραγγελίες QR είναι κλειστές μέχρι την online πληρωμή.
 //  1. Διαχείριση: ημερολόγια (/admin/trips, /admin/parties, /admin/ceremonies, /admin/events) — νέα εκδρομή, νέο πάρτι με σύμπτωση ώρας
 //  2. Προσωπικό: ημερολόγιο /pda/calendar με φίλτρα (χωρίς τηλέφωνο/τιμές για ταμία), παλιό /pda/trips, όχι πρόσβαση στη Διαχείριση
-//  3. Ταμείο 1: άνοιγμα με Μπαρ Κέντρο + QR Κέντρο & Παιδική· Ταμείο 2: Μπαρ Παιδική + QR Παιδική (τη μεταφέρει από το Ταμείο 1)
+//  3. Ταμείο 1 ανοίγει με Μπαρ Κέντρο, Ταμείο 2 με Μπαρ Παιδική (χωρίς επιλογή χώρων QR)
 //  4. Πωλήσεις: μετρητά με ρέστα, κάρτα, βομβητής σε χρήση· κάθε ρόφημα στο μπαρ του ταμείου του, το φαγητό στην κουζίνα
 //  5. Βομβητής: ΕΤΟΙΜΟ, οθόνη παραλαβών, «Παραδόθηκε» από κουζίνα και ταμείο
-//  6. QR από την Παιδική: επιλογή χώρου, φαίνεται μόνο στο Ταμείο 2, πληρωμή με βομβητή, ρόφημα στο Μπαρ Παιδική, παραλαβή
-//  7. Κλείσιμο Ταμείου 2 → το QR της Παιδικής κλείνει → το Ταμείο 1 την αναλαμβάνει μέσα στη βάρδια → ξανανοίγει
-//  8. Κλείσιμο Ταμείου 1 με έλλειμμα, ποσά ανά ταμείο, /admin/registers
-//  9. Όλες οι σελίδες της Διαχείρισης, QR ανά χώρο, PIN προσωπικού, dashboard συνεταίρων
+//  6. Το Μπαρ Παιδικής κλείνει: το Ταμείο 2 αλλάζει μπαρ μέσα στη βάρδια και τα ροφήματά του βγαίνουν στο Μπαρ Κέντρο
+//  7. QR κλειστό: η σελίδα του κινητού δείχνει μόνο μενού, η Διαχείριση δεν δίνει QR για εκτύπωση
+//  8. Κλείσιμο ταμείων (χωρίς διαφορά / με έλλειμμα), ποσά ανά ταμείο, /admin/registers
+//  9. Όλες οι σελίδες της Διαχείρισης, PIN προσωπικού, dashboard συνεταίρων
 // Σε κάθε σελίδα: pageerror, console error, HTTP ≥ 500 και μηνύματα σφάλματος του Next μετρούν ως αποτυχία.
 //
 // Χρήση (σε ΚΑΘΑΡΗ βάση demo, χωρίς NIDO_ADMIN_PIN, ώστε να ισχύουν τα PIN 1234/4444/2222):
@@ -152,7 +152,7 @@ const partner = await device("συνεταίρος", PHONE);
 /* --- βοηθητικά ταμείου (κάθε συσκευή-ταμείο έχει τα δικά της) --- */
 const cats = (t) => t.getByRole("navigation", { name: "Κατηγορίες" });
 const cart = (t) => t.getByRole("complementary", { name: "Καλάθι" });
-const setupButton = (t) => t.getByRole("button", { name: /^Μπαρ και QR:/ });
+const setupButton = (t) => t.getByRole("button", { name: /^Μπαρ( και QR)?:/ });
 const salesCount = async (t, n, who) => {
   await t
     .getByText(new RegExp(`· ${n} πωλήσεις$`))
@@ -172,11 +172,10 @@ const withModifier = async (t, modifier) => {
 const payMode = (scope, mode) => scope.getByRole("group", { name: "Τρόπος πληρωμής" }).getByRole("button", { name: mode, exact: true }).click();
 const barGroup = (scope) => scope.getByRole("group", { name: "Τα ροφήματα βγαίνουν στο" });
 const qrGroup = (scope) => scope.getByRole("group", { name: "Παραγγελίες QR από" });
-const areaToggle = (scope, area) => qrGroup(scope).getByRole("button", { name: new RegExp(`^(✓ )?${escapeRe(area)}`) });
-/** Η μπάρα του ταμείου δείχνει το μπαρ και τους χώρους QR της βάρδιας (περιμένει ζωντανή ενημέρωση έως 20″). */
+/** Η μπάρα του ταμείου δείχνει το μπαρ της βάρδιας (με κλειστό το QR, χωρίς χώρους). */
 const expectSetup = async (t, label, who) => {
   await t
-    .getByRole("button", { name: `Μπαρ και QR: ${label}`, exact: true })
+    .getByRole("button", { name: `Μπαρ: ${label}`, exact: true })
     .waitFor({ timeout: 20000 })
     .catch(async () => problem(`${who}: η μπάρα δεν δείχνει «${label}» (δείχνει «${await setupButton(t).getAttribute("aria-label").catch(() => "")}»)`));
 };
@@ -331,7 +330,7 @@ try {
     check((await nav(kitchen).getByRole("link", { name: "Ημερολόγιο" }).count()) === 0, "μενού: ο υπεύθυνος βλέπει «Ημερολόγιο» (είναι μόνο για προσωπικό)");
   });
 
-  await step("Ταμείο 1: άνοιγμα με Μπαρ Κέντρο και QR από Κέντρο + Παιδική", async () => {
+  await step("Ταμείο 1: άνοιγμα με Μπαρ Κέντρο", async () => {
     await loginPin(till1, PIN.cashier);
     await visit(till1, "/cashier");
     await till1.getByRole("heading", { name: "Ποιο ταμείο είναι αυτό;" }).waitFor();
@@ -345,39 +344,34 @@ try {
     await till1.getByPlaceholder("0,00").fill("50");
     await till1.getByRole("button", { name: "Άνοιγμα βάρδιας · Ταμείο 1" }).click();
     await expectToast(till1, "Διάλεξε σε ποιο μπαρ θα βγαίνουν τα ροφήματα", "ταμείο 1");
-    check((await areaToggle(till1, "Κέντρο").getAttribute("aria-pressed")) === "false", "ταμείο 1: ο χώρος «Κέντρο» ήταν ήδη επιλεγμένος");
+    // Κλειστό QR: καμία επιλογή χώρων στο άνοιγμα.
+    check((await qrGroup(till1).count()) === 0, "ταμείο 1: το άνοιγμα δείχνει επιλογή χώρων QR ενώ το QR είναι κλειστό");
     await barGroup(till1).getByRole("button", { name: "Μπαρ Κέντρο", exact: true }).click();
-    await areaToggle(till1, "Κέντρο").click();
-    await areaToggle(till1, "Παιδική").click();
     await shot(till1, "cashier-open-setup");
     await till1.getByRole("button", { name: "Άνοιγμα βάρδιας · Ταμείο 1" }).click();
     await cats(till1).waitFor({ timeout: 20000 });
     await hydrated(till1);
     await checkNoError(till1, "/cashier");
     await salesCount(till1, 0, "ταμείο 1");
-    await expectSetup(till1, "Μπαρ Κέντρο · QR: Κέντρο, Παιδική", "ταμείο 1");
-    if (!(await till1.getByRole("button", { name: "Προς πληρωμή (0)" }).isVisible())) throw new Error("Υπάρχουν εκκρεμείς παραγγελίες: τρέξε το script σε καθαρή βάση demo (άδειο PGLITE_DIR)");
+    await expectSetup(till1, "Μπαρ Κέντρο", "ταμείο 1");
+    // Το «Προς πληρωμή» φαίνεται μόνο αν υπάρχουν εκκρεμείς λογαριασμοί (το QR είναι κλειστό).
+    if ((await till1.getByRole("button", { name: /^Προς πληρωμή/ }).count()) > 0) throw new Error("Υπάρχουν εκκρεμείς λογαριασμοί: τρέξε το script σε καθαρή βάση demo (άδειο PGLITE_DIR)");
     await shot(till1, "cashier-till-1");
   });
 
-  await step("Ταμείο 2: άνοιγμα με Μπαρ Παιδική και QR από Παιδική (την παίρνει από το Ταμείο 1)", async () => {
+  await step("Ταμείο 2: άνοιγμα με Μπαρ Παιδική", async () => {
     await loginPin(till2, PIN.manager);
     await visit(till2, "/cashier");
     await till2.getByRole("button", { name: /Ταμείο 2/ }).click();
     await till2.getByText("Η βάρδια είναι κλειστή").waitFor();
     await hydrated(till2);
-    check((await text(areaToggle(till2, "Παιδική"))).includes("τώρα: Ταμείο 1"), "ταμείο 2: δεν φαίνεται ότι η Παιδική είναι στο Ταμείο 1");
     await barGroup(till2).getByRole("button", { name: "Μπαρ Παιδική", exact: true }).click();
-    await areaToggle(till2, "Παιδική").click();
-    check((await text(areaToggle(till2, "Παιδική"))).includes("θα μεταφερθεί από Ταμείο 1"), "ταμείο 2: δεν προειδοποιεί ότι η Παιδική θα μεταφερθεί");
-    await shot(till2, "cashier-open-takeover");
+    await shot(till2, "cashier-open-2");
     await till2.getByPlaceholder("0,00").fill("20");
     await till2.getByRole("button", { name: "Άνοιγμα βάρδιας · Ταμείο 2" }).click();
     await cats(till2).waitFor({ timeout: 20000 });
     await hydrated(till2);
-    await expectSetup(till2, "Μπαρ Παιδική · QR: Παιδική", "ταμείο 2");
-    // Το Ταμείο 1 ενημερώνεται μόνο του: έχασε την Παιδική.
-    await expectSetup(till1, "Μπαρ Κέντρο · QR: Κέντρο", "ταμείο 1");
+    await expectSetup(till2, "Μπαρ Παιδική", "ταμείο 2");
   });
 
   await step("Ταμείο 1: πώληση με μετρητά, ρέστα και βομβητή 7", async () => {
@@ -462,88 +456,64 @@ try {
     await modal(till2).getByRole("button", { name: "Κλείσιμο", exact: true }).click();
   });
 
-  let paidikiUrl = "";
-  await step("QR από την Παιδική: φαίνεται μόνο στο Ταμείο 2, πληρώνεται με βομβητή 12, ρόφημα στο Μπαρ Παιδική", async () => {
-    const q = customer;
-    // Το κοινό QR ρωτά πού κάθεται ο πελάτης.
-    await visit(q, "/order");
-    await q.getByRole("heading", { name: "Πού κάθεσαι;" }).waitFor();
-    await shot(q, "order-choose-area");
-    await q.getByRole("link", { name: /^Παιδική/ }).click();
-    await q.waitForURL(/\/order\?a=\d+/);
-    paidikiUrl = q.url();
-    await hydrated(q);
-    check((await text(q.getByTestId("order-area"))) === "Παιδική", "order: δεν φαίνεται ο χώρος «Παιδική»");
-    await q.getByRole("button", { name: /Burger/ }).first().click();
-    await q.getByRole("button", { name: /Classic Burger/ }).first().click();
-    await q.getByRole("button", { name: /Extra τυρί/ }).click();
-    await q.getByRole("button", { name: /^Προσθήκη/ }).click();
-    await q.getByRole("button", { name: /Coca-Cola 330ml/ }).first().click();
-    await q.getByRole("button", { name: /Καλάθι/ }).click();
-    await q.getByRole("heading", { name: "Το καλάθι σου" }).waitFor();
-    await shot(q, "order-cart");
-    await q.getByRole("button", { name: "Αποστολή παραγγελίας" }).click();
-    await q.getByPlaceholder("π.χ. Κώστας").fill("Κώστας");
-    await q.getByPlaceholder("69xxxxxxxx").fill("6912345678");
-    await q.getByRole("button", { name: "Αποστολή παραγγελίας" }).click();
-    await q.waitForURL(/\/order\/[A-Za-z0-9_-]{10,}$/, { timeout: 30000 });
-    await hydrated(q);
-    await checkNoError(q, "/order/[token]");
-    const st = await text(q.locator("body"));
-    const code = (st.match(/#(\d{3})/) || [])[1];
-    check(code && st.includes("Ελήφθη"), "order: η σελίδα κατάστασης δεν δείχνει κωδικό ή «Ελήφθη»");
-    await shot(q, "order-status");
-
-    await till2.getByRole("button", { name: "Προς πληρωμή (1)" }).click({ timeout: 20000 });
-    // Το Ταμείο 1 δεν δέχεται πια την Παιδική: δεν τη βλέπει (νέα φόρτωση από τον server, όχι από τη μνήμη του browser).
-    await visit(till1, "/cashier");
-    await cats(till1).waitFor();
-    check(await till1.getByRole("button", { name: "Προς πληρωμή (0)" }).isVisible(), "ταμείο 1: βλέπει την παραγγελία QR της Παιδικής");
+  await step("Το Μπαρ Παιδικής κλείνει: το Ταμείο 2 στέλνει τα ροφήματα στο Μπαρ Κέντρο", async () => {
+    await setupButton(till2).click();
     const m = modal(till2);
-    const pay = m.getByRole("button", { name: new RegExp(`^Πληρωμή #${code} Κώστας, ${euro(1200)}`) });
-    check((await text(pay)).includes("QR · Παιδική"), "ταμείο 2: η παραγγελία δεν γράφει «QR · Παιδική»");
-    await pay.click();
-    await m.locator("#order-buzzer").fill("12");
-    await m.getByRole("button", { name: "Ολοκλήρωση" }).click();
-    await expectToast(till2, "Πληρώθηκε · Βομβητής 12", "ταμείο 2 QR");
+    await m.getByRole("heading", { name: "Μπαρ · Ταμείο 2" }).waitFor();
+    await barGroup(m).waitFor();
+    check((await qrGroup(m).count()) === 0, "ταμείο 2: η αλλαγή δείχνει χώρους QR ενώ το QR είναι κλειστό");
+    await barGroup(m).getByRole("button", { name: "Μπαρ Κέντρο", exact: true }).click();
+    await m.getByRole("button", { name: "Αποθήκευση", exact: true }).click();
+    await expectToast(till2, "Αποθηκεύτηκε", "ταμείο 2");
+    await expectSetup(till2, "Μπαρ Κέντρο", "ταμείο 2");
+
+    // Νερό με μετρητά (ακριβώς) και βομβητή 9.
+    await tap(till2, "Αναψυκτικά", "Νερό 500ml");
+    const c = cart(till2);
+    await c.locator("#till-buzzer").fill("9");
+    await c.getByRole("button", { name: `Πληρωμή ${euro(50)}` }).click();
+    await c.getByRole("button", { name: "Ολοκλήρωση" }).click();
+    await waitText(c.locator("[data-testid=last-sale]"), ["Βομβητής 9", euro(50)], "ταμείο 2: λάθος σύνοψη πώλησης μετά την αλλαγή μπαρ");
     await salesCount(till2, 2, "ταμείο 2");
-    await q.getByText("✓ Πληρώθηκε").waitFor({ timeout: 20000 }).catch(() => problem("order: η πληρωμή δεν φάνηκε στον πελάτη"));
 
-    await kdsStation("Μπαρ Παιδική");
-    await ticket(12).waitFor({ timeout: 20000 });
-    check((await text(ticket(12))).includes("Coca-Cola 330ml"), "Μπαρ Παιδική: λείπει το ρόφημα της παραγγελίας QR");
     await kdsStation("Μπαρ Κέντρο");
-    check((await ticket(12).count()) === 0, "Μπαρ Κέντρο: φαίνεται το ρόφημα της παραγγελίας QR της Παιδικής");
+    await ticket(9).waitFor({ timeout: 20000 });
+    await kdsStation("Μπαρ Παιδική");
+    check((await ticket(9).count()) === 0, "Μπαρ Παιδική: το ρόφημα βγήκε στο κλειστό μπαρ");
     await kdsStation("Όλα");
-    check(!(await text(ticket(12))).includes("ΔΕΝ ΕΧΕΙ ΠΛΗΡΩΘΕΙ"), "kds: η πληρωμένη παραγγελία QR φαίνεται απλήρωτη");
-    await ticket(12).getByRole("button", { name: "Έτοιμο, βομβητής 12" }).click();
-    await expectToast(kitchen, "🔔 Χτύπα τον βομβητή 12", "kds QR");
-    await q.getByText("Η παραγγελία σου είναι έτοιμη!").waitFor({ timeout: 20000 }).catch(() => problem("order: το «έτοιμη» δεν εμφανίστηκε ζωντανά"));
-    check((await text(q.locator("body"))).includes("Πέρασε να την παραλάβεις."), "order: ο πελάτης δεν βλέπει ότι είναι πληρωμένη");
-    await shot(q, "order-ready");
-
-    await till2.getByRole("button", { name: "Έτοιμες (1)" }).click({ timeout: 20000 });
-    await modal(till2).getByRole("button", { name: "Παραδόθηκε: Βομβητής 12" }).click();
-    await modal(till2).getByText("Καμία έτοιμη παραγγελία δεν περιμένει.").waitFor();
-    await modal(till2).getByRole("button", { name: "Κλείσιμο", exact: true }).click();
-    await q.getByText("Ευχαριστούμε!").waitFor({ timeout: 20000 }).catch(() => problem("order: το «Ευχαριστούμε!» δεν εμφανίστηκε μετά την παράδοση"));
-    await shot(q, "order-picked-up");
+    await ticket(9).getByRole("button", { name: "Έτοιμο, βομβητής 9" }).click();
+    await expectToast(kitchen, "🔔 Χτύπα τον βομβητή 9", "kds");
+    await kitchen.getByRole("button", { name: "Παραδόθηκε: Βομβητής 9" }).click();
+    await kitchen.getByRole("button", { name: "Παραδόθηκε: Βομβητής 9" }).waitFor({ state: "detached" });
   });
 
-  await step("Ταμείο 2: κλείσιμο χωρίς διαφορά (Παιδική κλείνει για QR)", async () => {
+  await step("QR κλειστό: το κινητό δείχνει μόνο μενού", async () => {
+    const q = customer;
+    for (const path of ["/order", "/order?a=1"]) {
+      await visit(q, path);
+      check((await q.getByRole("heading", { name: "Πού κάθεσαι;" }).count()) === 0, `${path}: ρωτά πού κάθεται ενώ το QR είναι κλειστό`);
+      await q.getByRole("heading", { name: "Μενού", exact: true }).waitFor();
+      check((await text(q.getByTestId("order-closed"))).includes("παράγγειλε στο ταμείο"), `${path}: λείπει το μήνυμα «παράγγειλε στο ταμείο»`);
+      check((await q.getByRole("button", { name: /^Καλάθι/ }).count()) === 0, `${path}: φαίνεται καλάθι ενώ το QR είναι κλειστό`);
+      check(await q.getByRole("button", { name: /Classic Burger/ }).first().isDisabled(), `${path}: τα είδη πατιούνται ενώ το QR είναι κλειστό`);
+    }
+    await shot(q, "order-closed");
+  });
+
+  await step("Ταμείο 2: κλείσιμο χωρίς διαφορά", async () => {
     await till2.getByRole("button", { name: "Κλείσιμο ταμείου" }).click();
     await modal(till2).getByRole("heading", { name: "Κλείσιμο ταμείου · Ταμείο 2" }).waitFor();
-    // 3,00 € κάρτα (βομβητής 8) + 12,00 € μετρητά (QR) · αρχικό 20,00 €
+    // 3,00 € κάρτα (βομβητής 8) + 0,50 € μετρητά (βομβητής 9) · αρχικό 20,00 €
     const m = await checkClose(till2, "ταμείο 2", [
       ["Πωλήσεις", "2"],
-      ["Μετρητά (1)", euro(1200)],
+      ["Μετρητά (1)", euro(50)],
       ["Κάρτα (1)", euro(300)],
-      ["Σύνολο εισπράξεων", euro(1500)],
+      ["Σύνολο εισπράξεων", euro(350)],
       ["Αρχικό ταμείο", euro(2000)],
-      ["Αναμενόμενα μετρητά στο συρτάρι", euro(3200)],
+      ["Αναμενόμενα μετρητά στο συρτάρι", euro(2050)],
     ]);
-    check((await text(m)).includes("δεν θα γίνονται δεκτές παραγγελίες QR από: Παιδική"), "ταμείο 2: το κλείσιμο δεν προειδοποιεί ότι η Παιδική κλείνει για QR");
-    await m.getByLabel("Μετρητά που μέτρησες στο συρτάρι (€)").fill("32");
+    check(!(await text(m)).includes("παραγγελίες QR"), "ταμείο 2: το κλείσιμο μιλά για παραγγελίες QR ενώ το QR είναι κλειστό");
+    await m.getByLabel("Μετρητά που μέτρησες στο συρτάρι (€)").fill("20,50");
     await waitText(m.getByRole("status"), ["Συμφωνεί"], "ταμείο 2: η διαφορά δεν είναι «Συμφωνεί»");
     await m.getByRole("button", { name: "Κλείσιμο ταμείου", exact: true }).click();
     const report = till2.getByRole("region", { name: "Σύνοψη βάρδιας" });
@@ -552,31 +522,6 @@ try {
     await shot(till2, "cashier-2-report");
     await report.getByRole("button", { name: "Τέλος" }).click();
     await till2.getByText("Η βάρδια είναι κλειστή").waitFor();
-  });
-
-  await step("QR Παιδικής κλειστό → το Ταμείο 1 την αναλαμβάνει μέσα στη βάρδια", async () => {
-    await customer.goto(paidikiUrl);
-    await hydrated(customer);
-    await customer.getByTestId("order-closed").waitFor();
-    check((await customer.getByRole("button", { name: /^Καλάθι/ }).count()) === 0, "order: ο χώρος είναι κλειστός αλλά φαίνεται το καλάθι");
-    await shot(customer, "order-area-closed");
-    await visit(customer, "/order");
-    check((await text(customer.getByRole("link", { name: /^Παιδική/ }))).includes("παραγγελία στο ταμείο"), "order: η επιλογή χώρου δεν δείχνει την Παιδική ως κλειστή");
-
-    await setupButton(till1).click();
-    const m = modal(till1);
-    await m.getByRole("heading", { name: "Μπαρ και QR · Ταμείο 1" }).waitFor();
-    await areaToggle(m, "Παιδική").waitFor();
-    check((await areaToggle(m, "Παιδική").getAttribute("aria-pressed")) === "false", "ταμείο 1: η Παιδική φαίνεται ήδη επιλεγμένη");
-    await areaToggle(m, "Παιδική").click();
-    await m.getByRole("button", { name: "Αποθήκευση", exact: true }).click();
-    await expectToast(till1, "Αποθηκεύτηκε", "ταμείο 1");
-    await expectSetup(till1, "Μπαρ Κέντρο · QR: Κέντρο, Παιδική", "ταμείο 1");
-
-    await customer.goto(paidikiUrl);
-    await hydrated(customer);
-    check((await customer.getByTestId("order-closed").count()) === 0, "order: η Παιδική έμεινε κλειστή αφού την ανέλαβε το Ταμείο 1");
-    check(await customer.getByRole("button", { name: /^Καλάθι/ }).isVisible(), "order: δεν φαίνεται το καλάθι στην ανοιχτή Παιδική");
   });
 
   await step("Ταμείο 1: κλείσιμο με έλλειμμα 0,50 €", async () => {
@@ -615,12 +560,12 @@ try {
     };
     const r1 = await rowOf("Ταμείο 1", 6450);
     for (const v of [euro(1500), euro(5000), euro(6500), euro(50)]) check(r1.includes(v), `registers: λείπει «${v}» από τη βάρδια του Ταμείου 1 (${r1})`);
-    const r2 = await rowOf("Ταμείο 2", 3200);
-    for (const v of [euro(1200), euro(300), euro(1500), euro(2000)]) check(r2.includes(v), `registers: λείπει «${v}» από τη βάρδια του Ταμείου 2 (${r2})`);
+    const r2 = await rowOf("Ταμείο 2", 2050);
+    for (const v of [euro(50), euro(300), euro(350), euro(2000)]) check(r2.includes(v), `registers: λείπει «${v}» από τη βάρδια του Ταμείου 2 (${r2})`);
     await shot(admin, "admin-registers");
   });
 
-  await step("Διαχείριση: όλες οι σελίδες, QR ανά χώρο, PIN προσωπικού", async () => {
+  await step("Διαχείριση: όλες οι σελίδες, χωρίς QR για εκτύπωση, PIN προσωπικού", async () => {
     for (const r of [
       "/admin",
       "/admin/parties",
@@ -655,14 +600,11 @@ try {
       check(/\d+,\d%/.test(txt), `admin/costing: δεν υπολογίστηκε ${k} cost`);
     }
     await visit(admin, "/admin/qr");
-    const choices = await admin.getByRole("group", { name: "QR για" }).getByRole("button").allInnerTexts();
-    check(choices.join("|") === "Κέντρο|Παιδική|Κοινό (ρωτά πού κάθεται)", `admin/qr: επιλογές QR: ${choices.join(", ")}`);
-    await admin.getByRole("group", { name: "QR για" }).getByRole("button", { name: "Παιδική", exact: true }).click();
-    const link = await text(admin.locator("code").first());
-    check(paidikiUrl.endsWith(new URL(link).search) && /\/order\?a=\d+$/.test(link), `admin/qr: ο σύνδεσμος της Παιδικής είναι «${link}»`);
-    const src = await admin.getByTestId("qr-image").getAttribute("src").catch(() => null);
-    check(src?.startsWith("data:image/png"), "admin/qr: λείπει η εικόνα QR");
-    await shot(admin, "admin-qr-paidiki");
+    await admin.getByRole("heading", { name: "Παραλαβές", exact: true }).waitFor();
+    check((await text(admin.getByTestId("qr-off"))).includes("online πληρωμή"), "admin/qr: δεν εξηγεί ότι το QR είναι κλειστό μέχρι την online πληρωμή");
+    check((await admin.getByTestId("qr-image").count()) === 0, "admin/qr: δίνει QR για εκτύπωση ενώ το QR είναι κλειστό");
+    check((await admin.getByRole("button", { name: "Εκτύπωση" }).count()) === 0, "admin/qr: έχει κουμπί «Εκτύπωση» QR");
+    await shot(admin, "admin-qr-off");
     await visit(admin, "/admin/staff");
     const eleni = admin.locator("tbody tr", { hasText: "Ελένη" });
     await eleni.getByRole("button", { name: "Εμφάνιση PIN" }).click();
@@ -670,8 +612,8 @@ try {
   });
 
   await step("Συνεταίροι: dashboard", async () => {
-    // 15,00 € (Ταμείο 1) + 15,00 € (Ταμείο 2)
-    const dayTotal = 3000;
+    // 15,00 € (Ταμείο 1) + 3,50 € (Ταμείο 2)
+    const dayTotal = 1850;
     await partner.goto(`${BASE}/partners`);
     await partner.waitForURL(/\/partners\/login/);
     await hydrated(partner);

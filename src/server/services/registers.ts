@@ -8,6 +8,7 @@ import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, ne, or, sql } 
 import { getDb, schema } from "@/db";
 import { audit, type DbLike } from "@/server/audit";
 import { emit } from "@/server/events";
+import { qrOrderingEnabled } from "@/server/features";
 import { isUniqueViolation } from "@/server/util";
 import type { PaymentMethod } from "@/db/schema";
 import { addDays, athensDayStart, todayAthens } from "./reports";
@@ -179,7 +180,8 @@ async function cleanSetup(db: DbLike, setup: ShiftSetup): Promise<ShiftSetup> {
   const bar = setup.barStationId === null || setup.barStationId === undefined ? null : Number(setup.barStationId);
   if (bar !== null && !bars.some((b) => b.id === bar)) throw new Error("Το μπαρ δεν βρέθηκε ή είναι απενεργοποιημένο");
   if (bar === null && bars.length) throw new Error("Διάλεξε σε ποιο μπαρ θα βγαίνουν τα ροφήματα");
-  const ids = [...new Set((Array.isArray(setup.qrAreaIds) ? setup.qrAreaIds : []).map(Number))];
+  // Με κλειστό το QR κανένα ταμείο δεν δέχεται χώρους, ό,τι κι αν σταλεί.
+  const ids = qrOrderingEnabled() ? [...new Set((Array.isArray(setup.qrAreaIds) ? setup.qrAreaIds : []).map(Number))] : [];
   if (ids.some((id) => !areas.some((a) => a.id === id))) throw new Error("Ο χώρος δεν βρέθηκε ή είναι απενεργοποιημένος");
   return { barStationId: bar, qrAreaIds: ids.sort((a, b) => a - b) };
 }
@@ -233,6 +235,8 @@ export async function shiftSetupOptions(registerId: number): Promise<ShiftSetupO
       qrAreaIds: (last?.qrAreaIds ?? []).filter((id) => areas.some((a) => a.id === id) && !takenBy(id)),
     };
   }
+  // Με κλειστό το QR η οθόνη δεν δείχνει καθόλου επιλογή χώρων.
+  if (!qrOrderingEnabled()) return { bars, areas: [], current: { ...current, qrAreaIds: [] } };
   return { bars, areas: areas.map((a) => ({ ...a, takenBy: takenBy(a.id) })), current };
 }
 

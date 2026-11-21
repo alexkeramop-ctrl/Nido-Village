@@ -4,6 +4,7 @@ import { LiveRefresh } from "@/components/live";
 import { requirePageUser } from "@/server/page-auth";
 import { getSettings } from "@/server/services/settings";
 import { listRecentQrOrders, qrAreasStatus } from "@/server/services/public-order";
+import { qrOrderingEnabled } from "@/server/features";
 import { QrClient, type QrCode } from "./qr-client";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +28,8 @@ export default async function AdminQrPage() {
     ...areas.map((a) => ({ key: `area-${a.id}`, label: a.name, area: a.name, url: `${orderUrl}?a=${a.id}`, open: a.open })),
     { key: "all", label: areas.length > 1 ? "Κοινό (ρωτά πού κάθεται)" : "Κοινό", area: null, url: orderUrl, open: null },
   ];
-  const qrs: QrCode[] = await Promise.all(codes.map(async (c) => ({ ...c, dataUrl: await toDataURL(c.url, { width: 512, margin: 2 }) })));
+  // Κλειστές παραγγελίες QR (μέχρι να συνδεθεί online πληρωμή): κανένα QR για εκτύπωση.
+  const qrs: QrCode[] = qrOrderingEnabled() ? await Promise.all(codes.map(async (c) => ({ ...c, dataUrl: await toDataURL(c.url, { width: 512, margin: 2 }) }))) : [];
   return (
     <>
       <LiveRefresh types={["session.changed"]} />

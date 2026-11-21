@@ -53,6 +53,7 @@ export function TillScreen({
   register,
   userName,
   canDiscount,
+  qrEnabled,
   menu,
   frequentIds,
   initial,
@@ -60,6 +61,8 @@ export function TillScreen({
   register: { id: number; name: string };
   userName: string;
   canDiscount: boolean;
+  /** Παραγγελίες QR ανοιχτές (src/server/features.ts). Κλειστές: δεν φαίνονται χώροι QR ούτε άδειο «Προς πληρωμή». */
+  qrEnabled: boolean;
   menu: Menu;
   frequentIds: number[];
   initial: TillSnapshot;
@@ -257,14 +260,16 @@ export function TillScreen({
             type="button"
             className="btn-ghost btn-sm text-xs! max-w-[18rem] truncate"
             onClick={() => setSetupOpen(true)}
-            aria-label={`Μπαρ και QR: ${setupLabel(shift)}`}
-            title="Αλλαγή μπαρ και χώρων QR"
+            aria-label={`${qrEnabled ? "Μπαρ και QR" : "Μπαρ"}: ${setupLabel(shift, qrEnabled)}`}
+            title={qrEnabled ? "Αλλαγή μπαρ και χώρων QR" : "Αλλαγή μπαρ"}
           >
-            {setupLabel(shift)}
+            {setupLabel(shift, qrEnabled)}
           </button>
-          <button type="button" className={`btn btn-sm border ${pendingCount ? "bg-warn-soft text-warn border-warn/40" : "bg-white/70 text-ink border-line"}`} onClick={() => setOrdersOpen(true)}>
-            Προς πληρωμή ({pendingCount})
-          </button>
+          {(qrEnabled || pendingCount > 0) && (
+            <button type="button" className={`btn btn-sm border ${pendingCount ? "bg-warn-soft text-warn border-warn/40" : "bg-white/70 text-ink border-line"}`} onClick={() => setOrdersOpen(true)}>
+              Προς πληρωμή ({pendingCount})
+            </button>
+          )}
           {readyCount > 0 && (
             <button type="button" className="btn btn-sm border bg-ok-soft text-ok border-ok/40" onClick={() => setOrdersOpen(true)}>
               Έτοιμες ({readyCount})
@@ -600,6 +605,7 @@ export function TillScreen({
         <ShiftSetupModal
           registerId={register.id}
           shift={shift}
+          qrEnabled={qrEnabled}
           onClose={() => setSetupOpen(false)}
           onSaved={(message) => {
             setSetupOpen(false);

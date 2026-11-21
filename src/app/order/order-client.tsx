@@ -194,7 +194,7 @@ export function OrderClient({
             <Mark height={44} />
             <div className="min-w-0">
               <div className="text-[11px] uppercase tracking-widest text-ink-3 font-semibold truncate">{venueName}</div>
-              <h1 className="text-xl font-bold leading-tight text-brand">Παραγγελία για παραλαβή</h1>
+              <h1 className="text-xl font-bold leading-tight text-brand">{open ? "Παραγγελία για παραλαβή" : "Μενού"}</h1>
             </div>
             {area && <span className="chip bg-brand-soft text-brand-2 ml-auto shrink-0" data-testid="order-area">{area.name}</span>}
           </div>

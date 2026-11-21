@@ -147,7 +147,19 @@ export function ShiftSetupFields({ options, value, onChange, disabled }: { optio
 }
 
 /** Αλλαγή μπαρ / χώρων QR μέσα στη βάρδια (π.χ. το άλλο ταμείο κλείνει και αυτό αναλαμβάνει τον χώρο του). */
-export function ShiftSetupModal({ registerId, shift, onClose, onSaved }: { registerId: number; shift: ShiftDto; onClose: () => void; onSaved: (message: string) => void }) {
+export function ShiftSetupModal({
+  registerId,
+  shift,
+  qrEnabled,
+  onClose,
+  onSaved,
+}: {
+  registerId: number;
+  shift: ShiftDto;
+  qrEnabled: boolean;
+  onClose: () => void;
+  onSaved: (message: string) => void;
+}) {
   const { toast, element } = useToast();
   const [pending, start] = useTransition();
   const [options, setOptions] = useState<ShiftSetupOptions | null>(null);
@@ -182,7 +194,7 @@ export function ShiftSetupModal({ registerId, shift, onClose, onSaved }: { regis
     });
   };
   return (
-    <Modal open onClose={onClose} title={`Μπαρ και QR · ${shift.registerName}`}>
+    <Modal open onClose={onClose} title={`${qrEnabled ? "Μπαρ και QR" : "Μπαρ"} · ${shift.registerName}`}>
       {options ? (
         <div className="space-y-4">
           <ShiftSetupFields options={options} value={value} onChange={setValue} disabled={pending} />
@@ -198,10 +210,12 @@ export function ShiftSetupModal({ registerId, shift, onClose, onSaved }: { regis
   );
 }
 
-/** Σύντομη περιγραφή για τη μπάρα του ταμείου: «Μπαρ Κέντρο · QR: Παιδική». */
-export function setupLabel(shift: ShiftDto): string {
+/** Σύντομη περιγραφή για τη μπάρα του ταμείου: «Μπαρ Κέντρο · QR: Παιδική» (με κλειστό το QR μόνο το μπαρ). */
+export function setupLabel(shift: ShiftDto, qrEnabled: boolean): string {
+  const bar = shift.barName ?? "Μπαρ κατηγορίας";
+  if (!qrEnabled) return bar;
   const qr = shift.qrAreas.length ? shift.qrAreas.map((a) => a.name).join(", ") : "κανένας χώρος";
-  return `${shift.barName ?? "Μπαρ κατηγορίας"} · QR: ${qr}`;
+  return `${bar} · QR: ${qr}`;
 }
 
 /* ------------------------------ Άνοιγμα βάρδιας ------------------------------ */
@@ -320,7 +334,7 @@ export function CloseShiftModal({ shift, blocked, onClose, onClosed }: { shift: 
           {shift.qrAreas.length > 0 && (
             <p className="rounded-xl bg-surface-3 text-ink-2 px-3 py-2 text-sm">
               Μετά το κλείσιμο δεν θα γίνονται δεκτές παραγγελίες QR από: <span className="font-semibold">{shift.qrAreas.map((a) => a.name).join(", ")}</span>, εκτός αν τις αναλάβει
-              άλλο ταμείο (κουμπί «Μπαρ και QR»).
+              άλλο ταμείο (κουμπί «Μπαρ και QR» στη μπάρα του).
             </p>
           )}
           {blocked && <p className="rounded-xl bg-warn-soft text-warn px-3 py-2 text-sm font-medium">{blocked}</p>}

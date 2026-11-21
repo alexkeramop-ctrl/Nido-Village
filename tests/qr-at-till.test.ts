@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { seeded, employeeByName, productByName, modifierByName, tableByName, areaByName, stationByName } from "./helpers";
@@ -15,7 +15,11 @@ let shift2: number;
 let register2: number;
 let qrArea: number;
 
+// Οι παραγγελίες QR είναι κλειστές από προεπιλογή (src/server/features.ts): εδώ ελέγχεται η λειτουργία τους.
+afterAll(() => vi.unstubAllEnvs());
+
 beforeAll(async () => {
+  vi.stubEnv("NIDO_QR_ORDERING", "1");
   await seeded();
   const c = await employeeByName("Νίκος");
   const m = await employeeByName("Ελένη");

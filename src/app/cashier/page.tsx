@@ -3,6 +3,7 @@ import { hasRole } from "@/server/auth";
 import { getMenu } from "@/server/services/catalog";
 import { deviceRegister } from "@/server/services/device-register";
 import { shiftSetupOptions } from "@/server/services/registers";
+import { qrOrderingEnabled } from "@/server/features";
 import { tillSnapshot, topProducts } from "@/server/services/till";
 import { Shell } from "@/components/shell";
 import { OpenShiftPanel, RegisterPicker } from "./shift-panels";
@@ -42,6 +43,7 @@ export default async function CashierPage() {
         register={{ id: register.id, name: register.name }}
         userName={user.name}
         canDiscount={hasRole(user, "manager")}
+        qrEnabled={qrOrderingEnabled()}
         menu={menu}
         frequentIds={frequentIds}
         initial={snapshot}
