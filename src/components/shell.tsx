@@ -8,8 +8,8 @@ const NAV: { href: string; label: string; roles: string[] }[] = [
   // Self-service: η οθόνη σερβιτόρου (/pda) υπάρχει ακόμη αλλά δεν εμφανίζεται πια στο μενού.
   { href: "/cashier", label: "Ταμείο", roles: ["cashier", "manager", "admin"] },
   { href: "/kds", label: "Κουζίνα & Μπαρ", roles: ["manager", "admin"] },
-  // Ημερολόγιο σχολικών εκδρομών για όλο το προσωπικό (μόνο ανάγνωση· η καταχώρηση γίνεται στη Διαχείριση).
-  { href: "/pda/trips", label: "Εκδρομές", roles: ["kitchen", "waiter", "cashier", "manager", "admin"] },
+  // Ημερολόγιο εκδηλώσεων για το προσωπικό (μόνο ανάγνωση). Υπεύθυνος και διαχειριστής το έχουν στη Διαχείριση.
+  { href: "/pda/calendar", label: "Ημερολόγιο", roles: ["kitchen", "waiter", "cashier"] },
   { href: "/admin", label: "Διαχείριση", roles: ["manager", "admin"] },
 ];
 
