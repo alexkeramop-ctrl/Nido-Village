@@ -3,10 +3,11 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Badge, Modal, Money } from "@/components/ui";
 import { InfoBox, PageHeader, Section, TableWrap, useActionRunner } from "@/components/admin/common";
-import { fmtIsoDate, parseDecimal } from "@/components/admin/format";
+import { euroToInput, fmtIsoDate, parseDecimal } from "@/components/admin/format";
+import { normalizeItemKey } from "@/lib/invoice-match";
 import type { StockUnit } from "@/db/schema";
 import type { CostKind, CostStatus, IngredientOption, IngredientPrice, ProductCost, costingOverview } from "@/server/services/costing";
-import { quickIngredientAction, saveCostTargetsAction, saveRecipeAction } from "./actions";
+import { quickIngredientAction, saveCostTargetsAction, saveRecipeAction, saveResaleItemsAction } from "./actions";
 
 type Data = Awaited<ReturnType<typeof costingOverview>>;
 
@@ -56,6 +57,7 @@ export function CostingView({ data }: { data: Data }) {
   const [editing, setEditing] = useState<ProductCost | null>(null);
   const [editSeq, setEditSeq] = useState(0);
   const [targetsOpen, setTargetsOpen] = useState(false);
+  const [resaleOpen, setResaleOpen] = useState(false);
 
   const rows = useMemo(() => {
     const q = query.trim().toLocaleLowerCase("el");
@@ -79,6 +81,9 @@ export function CostingView({ data }: { data: Data }) {
         subtitle="Food cost και drink cost για κάθε προϊόν του καταλόγου, από τη συνταγή και τις τιμές των τιμολογίων"
         actions={
           <>
+            <button className="btn-secondary btn-sm" onClick={() => setResaleOpen(true)} data-testid="resale-open">
+              Έτοιμα προϊόντα (τιμή/τεμ.)
+            </button>
             <button className="btn-secondary btn-sm" onClick={() => setTargetsOpen(true)}>
               Στόχοι κόστους
             </button>
@@ -242,6 +247,7 @@ export function CostingView({ data }: { data: Data }) {
       </Section>
 
       {current && <RecipeEditor key={editSeq} product={current} ingredients={data.ingredients} onClose={() => setEditing(null)} runner={runner} />}
+      {resaleOpen && <ResaleModal products={data.products} ingredients={data.ingredients} onClose={() => setResaleOpen(false)} runner={runner} />}
       {targetsOpen && <TargetsModal food={data.targets.food} drink={data.targets.drink} onClose={() => setTargetsOpen(false)} runner={runner} />}
     </div>
   );
@@ -281,6 +287,8 @@ function RecipeEditor({ product, ingredients, onClose, runner }: { product: Prod
           Γράψε πόσο από κάθε πρώτη ύλη μπαίνει σε <strong>μία μερίδα</strong>, στη μονάδα της πρώτης ύλης. Τιμή πώλησης <Money cents={product.priceCents} />, χωρίς ΦΠΑ{" "}
           <Money cents={product.netCents} /> (ΦΠΑ {product.vatPct.toLocaleString("el-GR")}%).
         </p>
+
+        {product.lines.length === 0 && <ResaleQuick product={product} ingredients={ingredients} runner={runner} onDone={onClose} />}
 
         <div className="space-y-2" data-testid="recipe-lines">
           {lines.map((l) => {
@@ -416,6 +424,128 @@ function QuickIngredient({ runner, onCreated }: { runner: Runner; onCreated: (id
         </button>
       </div>
     </div>
+  );
+}
+
+/** Η πρώτη ύλη «ίδιο όνομα, σε τεμάχια» ενός έτοιμου προϊόντος (π.χ. «Coca-Cola 330ml»), αν υπάρχει. */
+function resaleIngredient(productName: string, ingredients: IngredientOption[]): IngredientOption | null {
+  const key = normalizeItemKey(productName);
+  return ingredients.find((i) => i.unit === "pcs" && normalizeItemKey(i.name) === key) ?? null;
+}
+
+/** Έτοιμο προϊόν: η συνταγή του είναι ακριβώς 1 τεμάχιο της ομώνυμης πρώτης ύλης. */
+function isResale(p: ProductCost): boolean {
+  return p.lines.length === 1 && p.lines[0].qty === 1 && p.lines[0].unit === "pcs" && normalizeItemKey(p.lines[0].name) === normalizeItemKey(p.name);
+}
+
+function initialPrice(p: ProductCost, ingredients: IngredientOption[]): string {
+  const ing = resaleIngredient(p.name, ingredients);
+  return ing && ing.price.unitCost > 0 ? euroToInput(ing.price.unitCost, 3) : "";
+}
+
+/** Μέσα στη συνταγή ενός προϊόντος χωρίς συνταγή: «είναι έτοιμο, κοστίζει τόσο το τεμάχιο». */
+function ResaleQuick({ product, ingredients, runner, onDone }: { product: ProductCost; ingredients: IngredientOption[]; runner: Runner; onDone: () => void }) {
+  const ing = resaleIngredient(product.name, ingredients);
+  const [value, setValue] = useState(() => initialPrice(product, ingredients));
+  const cost = parseDecimal(value, -1);
+  const costPct = product.netCents > 0 && cost > 0 ? Math.round(((cost * 100) / product.netCents) * 1000) / 10 : null;
+  return (
+    <div className="rounded-xl border border-brand/30 bg-brand-soft p-3 space-y-2" data-testid="resale-quick">
+      <div className="font-semibold text-sm">Έτοιμο προϊόν; (αναψυκτικό, νερό, μπύρα σε φιάλη…)</div>
+      <p className="text-xs text-ink-2">
+        Δεν χρειάζεται συνταγή: γράψε την τιμή αγοράς ανά τεμάχιο χωρίς ΦΠΑ. Δημιουργείται η πρώτη ύλη «{product.name}» σε τεμάχια (για απόθεμα και τιμολόγια) και η συνταγή 1 τεμάχιο.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="w-32">
+          <input className="input num" inputMode="decimal" placeholder="0,00" value={value} onChange={(e) => setValue(e.target.value)} aria-label="Τιμή αγοράς ανά τεμάχιο χωρίς ΦΠΑ" />
+        </div>
+        <span className="text-sm text-ink-3">€/τεμ.</span>
+        {costPct !== null && <span className="text-sm font-semibold num">= {pct(costPct)} της τιμής χωρίς ΦΠΑ</span>}
+        <button
+          type="button"
+          className="btn-primary btn-sm ml-auto"
+          disabled={runner.pending || !(cost >= 0) || value.trim() === ""}
+          onClick={() => runner.run(() => saveResaleItemsAction([{ productId: product.productId, unitCostEuro: cost }]), { success: `«${product.name}»: έτοιμο προϊόν`, onSuccess: onDone })}
+        >
+          Αποθήκευση ως έτοιμο
+        </button>
+      </div>
+      {ing && <div className="text-xs text-ink-3">Υπάρχει ήδη η πρώτη ύλη «{ing.name}»: {sourceText(ing.price)}.</div>}
+    </div>
+  );
+}
+
+/** Όλα τα έτοιμα προϊόντα μαζί: μία τιμή ανά τεμάχιο για καθένα, προσυμπληρωμένη από τιμολόγια/αποθήκη όπου υπάρχει. */
+function ResaleModal({ products, ingredients, onClose, runner }: { products: ProductCost[]; ingredients: IngredientOption[]; onClose: () => void; runner: Runner }) {
+  const [all, setAll] = useState(false);
+  const candidates = useMemo(
+    () => products.filter((p) => p.status === "norecipe" || isResale(p)).sort((a, b) => a.category.localeCompare(b.category, "el") || a.name.localeCompare(b.name, "el")),
+    [products],
+  );
+  const [values, setValues] = useState<Record<number, string>>(() => Object.fromEntries(candidates.map((p) => [p.productId, initialPrice(p, ingredients)])));
+  const shown = candidates.filter((p) => all || p.kind === "drink");
+  const filled = shown.filter((p) => (values[p.productId] ?? "").trim() !== "" && parseDecimal(values[p.productId], -1) >= 0);
+  const save = () =>
+    runner.run(() => saveResaleItemsAction(filled.map((p) => ({ productId: p.productId, unitCostEuro: parseDecimal(values[p.productId]) }))), {
+      success: `Αποθηκεύτηκαν ${filled.length} έτοιμα προϊόντα`,
+      onSuccess: onClose,
+    });
+  return (
+    <Modal open onClose={onClose} title="Έτοιμα προϊόντα · τιμή αγοράς ανά τεμάχιο" wide>
+      <div className="space-y-3">
+        <p className="text-sm text-ink-2">
+          Για ό,τι πουλιέται όπως αγοράζεται (αναψυκτικά, νερά, μπύρες σε φιάλη, χυμοί σε κουτί): μόνο η τιμή αγοράς ανά τεμάχιο χωρίς ΦΠΑ. Όσα έχουν ήδη τιμή από τιμολόγιο είναι
+          συμπληρωμένα. Άφησε κενό ό,τι θέλει κανονική συνταγή (π.χ. καφέδες, cocktail).
+        </p>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} /> Δείξε και τα φαγητά χωρίς συνταγή
+        </label>
+        {shown.length === 0 ? (
+          <p className="text-sm text-ink-3 py-4 text-center">Όλα τα {all ? "" : "ποτά "}έχουν ήδη συνταγή.</p>
+        ) : (
+          <ul className="divide-y divide-line max-h-[55vh] overflow-y-auto" data-testid="resale-list">
+            {shown.map((p) => {
+              const v = values[p.productId] ?? "";
+              const cost = parseDecimal(v, -1);
+              const costPct = p.netCents > 0 && cost > 0 ? Math.round(((cost * 100) / p.netCents) * 1000) / 10 : null;
+              const ing = resaleIngredient(p.name, ingredients);
+              return (
+                <li key={p.productId} className="py-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <div className="min-w-0 flex-1 basis-48">
+                    <div className="font-medium leading-tight">{p.name}</div>
+                    <div className="text-xs text-ink-3">
+                      {p.category} · πώληση <Money cents={p.priceCents} />
+                      {ing && ing.price.unitCost > 0 ? ` · ${sourceText(ing.price)}` : ""}
+                    </div>
+                  </div>
+                  <div className="w-28">
+                    <input
+                      className="input num"
+                      inputMode="decimal"
+                      placeholder="€/τεμ."
+                      value={v}
+                      onChange={(e) => setValues((cur) => ({ ...cur, [p.productId]: e.target.value }))}
+                      aria-label={`Τιμή αγοράς ανά τεμάχιο: ${p.name}`}
+                    />
+                  </div>
+                  <span className={`w-16 text-right text-sm num ${costPct === null ? "text-ink-3" : costPct <= p.targetPct ? "text-ok" : costPct <= p.targetPct + 5 ? "text-warn" : "text-danger"}`}>
+                    {pct(costPct)}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <div className="flex flex-wrap justify-end gap-2">
+          <button type="button" className="btn-secondary btn-sm" onClick={onClose} disabled={runner.pending}>
+            Άκυρο
+          </button>
+          <button type="button" className="btn-primary btn-sm" onClick={save} disabled={runner.pending || !filled.length} data-testid="resale-save">
+            {runner.pending ? "Αποθήκευση…" : `Αποθήκευση (${filled.length})`}
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

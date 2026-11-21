@@ -6,7 +6,15 @@ import { upsertVatRate } from "@/server/services/catalog";
 import { saveSettings } from "@/server/services/settings";
 import { upsertRegister } from "@/server/services/registers";
 
-export async function saveSettingsAction(input: { venueName: string; vatNumber: string; taxOffice: string; address: string; phone: string; email: string; courses: number }) {
+export async function saveSettingsAction(input: {
+  venueName: string;
+  vatNumber: string;
+  taxOffice: string;
+  address: string;
+  phone: string;
+  email: string;
+  courses: number;
+}) {
   return run(async () => {
     await requireRole("admin");
     if (!input.venueName.trim()) throw new Error("Απαιτείται επωνυμία");

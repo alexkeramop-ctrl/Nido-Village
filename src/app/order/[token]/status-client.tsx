@@ -161,7 +161,9 @@ export function StatusClient({ order, token, venueName, contact }: { order: Publ
               ? order.buzzerNo !== null
                 ? "Πληρώθηκε. Θα χτυπήσει ο βομβητής σου όταν είναι έτοιμη."
                 : "Πληρώθηκε. Θα σε ειδοποιήσουμε όταν είναι έτοιμη."
-              : "Πέρασε από το ταμείο να πληρώσεις και να πάρεις βομβητή."}
+              : order.waitingPayment
+                ? "Πέρασε από το ταμείο να πληρώσεις. Η κουζίνα ξεκινά την ετοιμασία μόλις πληρώσεις και παίρνεις βομβητή."
+                : "Πέρασε από το ταμείο να πληρώσεις και να πάρεις βομβητή."}
           </section>
         )}
 
@@ -216,7 +218,11 @@ export function StatusClient({ order, token, venueName, contact }: { order: Publ
                       <div className={`font-semibold leading-8 ${current ? "text-ok" : done ? "text-ink" : "text-ink-3"}`} aria-current={current ? "step" : undefined}>
                         {s.label}
                       </div>
-                      {current && <div className="text-xs text-ink-3 -mt-1">{s.hint}</div>}
+                      {current && (
+                        <div className="text-xs text-ink-3 -mt-1">
+                          {s.key === "received" && order.waitingPayment ? "Περιμένει την πληρωμή σου στο ταμείο· μετά πηγαίνει στην κουζίνα." : s.hint}
+                        </div>
+                      )}
                     </div>
                   </li>
                 );

@@ -6,7 +6,7 @@
 //  5. Ταμείο self-service: επιλογή ταμείου, άνοιγμα βάρδιας, γρήγορη πώληση (μετρητά + ρέστα, κάρτα), βομβητής σε χρήση,
 //     πληρωμή του Κ2 από τα «Προς πληρωμή»
 //  6. Βομβητής: ΕΤΟΙΜΟ στην κουζίνα, οθόνη παραλαβών, «Παραδόθηκε» από κουζίνα και ταμείο
-//  7. QR take-away: πελάτης στο κινητό → πληρωμή στο ταμείο με βομβητή → κουζίνα → παραλαβή
+//  7. QR μενού (μόνο μενού, χωρίς παραγγελία) · πώληση ταμείου με βομβητή 12 → κουζίνα → πίνακας παραλαβών → παράδοση
 //  8. Κλείσιμο ταμείου με έλλειμμα και έλεγχος των ποσών, αναφορά /admin/registers
 //  9. Όλες οι σελίδες της Διαχείρισης, QR, PIN προσωπικού, dashboard συνεταίρων
 // Σε κάθε σελίδα: pageerror, console error, HTTP ≥ 500 και μηνύματα σφάλματος του Next μετρούν ως αποτυχία.
@@ -429,46 +429,33 @@ try {
     await modal(cashier).getByRole("button", { name: "Κλείσιμο", exact: true }).click();
   });
 
-  await step("QR take-away: παραγγελία πελάτη, πληρωμή στο ταμείο με βομβητή 12, κουζίνα, παραλαβή", async () => {
+  await step("QR μενού: το κινητό δείχνει μόνο το μενού· η παραγγελία γίνεται στο ταμείο (βομβητής 12), κουζίνα, παραλαβή", async () => {
     const q = customer;
     await visit(q, "/order");
-    await q.getByRole("button", { name: /Burger/ }).first().click();
-    await q.getByRole("button", { name: /Classic Burger/ }).first().click();
-    await q.getByRole("button", { name: /Extra τυρί/ }).click();
-    await q.getByRole("button", { name: /^Προσθήκη/ }).click();
-    await q.getByRole("button", { name: /Coca-Cola 330ml/ }).first().click();
-    await q.getByRole("button", { name: /Καλάθι/ }).click();
-    await q.getByRole("heading", { name: "Το καλάθι σου" }).waitFor();
-    await shot(q, "order-cart");
-    await q.getByRole("button", { name: "Αποστολή παραγγελίας" }).click();
-    await q.getByPlaceholder("π.χ. Κώστας").fill("Κώστας");
-    await q.getByPlaceholder("69xxxxxxxx").fill("6912345678");
-    await q.getByRole("button", { name: "Αποστολή παραγγελίας" }).click();
-    await q.waitForURL(/\/order\/[A-Za-z0-9_-]{10,}$/, { timeout: 30000 });
-    await hydrated(q);
-    await checkNoError(q, "/order/[token]");
-    const st = await text(q.locator("body"));
-    const code = (st.match(/#(\d{3})/) || [])[1];
-    check(code && st.includes("Ελήφθη"), "order: η σελίδα κατάστασης δεν δείχνει κωδικό ή «Ελήφθη»");
-    await shot(q, "order-status");
+    await q.getByRole("heading", { name: "Μενού" }).waitFor();
+    check((await q.locator("[data-testid=menu-item]").count()) > 10, "qr μενού: εμφανίζονται λίγα είδη");
+    check((await q.getByRole("button", { name: /Καλάθι/ }).count()) === 0, "qr μενού: εμφανίζεται καλάθι ενώ οι παραγγελίες QR είναι κλειστές");
+    const menuText = await text(q.locator("main"));
+    check(menuText.includes("Classic Burger") && menuText.includes("Extra τυρί +"), "qr μενού: λείπει είδος ή η τιμή επιλογής");
+    await shot(q, "qr-menu");
 
-    await cashier.getByRole("button", { name: "Προς πληρωμή (1)" }).click({ timeout: 20000 });
-    const m = modal(cashier);
-    await m.getByRole("button", { name: new RegExp(`^Πληρωμή #${code} Κώστας, ${euro(1200)}`) }).click();
-    await m.locator("#order-buzzer").fill("12");
-    await m.getByRole("button", { name: "Ολοκλήρωση" }).click();
-    await expectToast(cashier, "Πληρώθηκε · Βομβητής 12", "ταμείο QR");
+    // Η ίδια παραγγελία στο ταμείο: Classic Burger με Extra τυρί + Coca-Cola = 12,00 € μετρητά, βομβητής 12.
+    await tap("Burger", "Classic Burger");
+    await withModifier(/Extra τυρί/);
+    await tap("Αναψυκτικά", "Coca-Cola 330ml");
+    const c = cart();
+    await c.locator("#till-buzzer").fill("12");
+    await c.getByRole("button", { name: `Πληρωμή ${euro(1200)}` }).click();
+    await c.locator("#pay-cash-given").fill("12");
+    await c.getByRole("button", { name: "Ολοκλήρωση" }).click();
+    await waitText(c.locator("[data-testid=last-sale]"), ["Βομβητής 12", euro(1200)], "ταμείο: λάθος σύνοψη πώλησης βομβητή 12");
     await salesCount(++saleNo);
-    await q.getByText("✓ Πληρώθηκε").waitFor({ timeout: 20000 }).catch(() => problem("order: η πληρωμή δεν φάνηκε στον πελάτη"));
 
     const t12 = kitchen.locator("article").filter({ has: kitchen.locator('[aria-label="Βομβητής 12"]') });
     await t12.waitFor({ timeout: 20000 });
-    check(!(await text(t12)).includes("ΔΕΝ ΕΧΕΙ ΠΛΗΡΩΘΕΙ"), "kds: η πληρωμένη παραγγελία QR φαίνεται απλήρωτη");
+    check(!(await text(t12)).includes("ΔΕΝ ΕΧΕΙ ΠΛΗΡΩΘΕΙ"), "kds: η πληρωμένη πώληση φαίνεται απλήρωτη");
     await t12.getByRole("button", { name: "Έτοιμο, βομβητής 12" }).click();
-    await expectToast(kitchen, "🔔 Χτύπα τον βομβητή 12", "kds QR");
-    await q.getByText("Η παραγγελία σου είναι έτοιμη!").waitFor({ timeout: 20000 }).catch(() => problem("order: το «έτοιμη» δεν εμφανίστηκε ζωντανά"));
-    check((await text(q.locator("body"))).includes("Πέρασε να την παραλάβεις."), "order: ο πελάτης δεν βλέπει ότι είναι πληρωμένη");
-    await shot(q, "order-ready");
+    await expectToast(kitchen, "🔔 Χτύπα τον βομβητή 12", "kds βομβητής 12");
 
     await visit(kitchen, "/pickup");
     check((await kitchen.locator('section[data-column="ready"] [aria-label="Βομβητής 12"]').count()) === 1, "pickup: ο βομβητής 12 δεν είναι στις «ΕΤΟΙΜΕΣ»");
@@ -477,11 +464,9 @@ try {
     await modal(cashier).getByRole("button", { name: "Παραδόθηκε: Βομβητής 12" }).click();
     await modal(cashier).getByText("Καμία έτοιμη παραγγελία δεν περιμένει.").waitFor();
     await modal(cashier).getByRole("button", { name: "Κλείσιμο", exact: true }).click();
-    await q.getByText("Ευχαριστούμε!").waitFor({ timeout: 20000 }).catch(() => problem("order: το «Ευχαριστούμε!» δεν εμφανίστηκε μετά την παράδοση"));
-    await shot(q, "order-picked-up");
   });
 
-  // 15,00 € μετρητά (βομβητής 7) + 12,00 € μετρητά (QR) · 3,00 € κάρτα (βομβητής 8) + 12,00 € κάρτα (Κ2)
+  // 15,00 € μετρητά (βομβητής 7) + 12,00 € μετρητά (βομβητής 12) · 3,00 € κάρτα (βομβητής 8) + 12,00 € κάρτα (Κ2)
   const expected = { sales: 4, cash: 2700, card: 1500, total: 4200, float: 5000, drawer: 7700, counted: 7650 };
 
   await step("Ταμείο: κλείσιμο με έλλειμμα 0,50 €", async () => {

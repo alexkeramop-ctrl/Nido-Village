@@ -4,6 +4,7 @@ import { getMenu } from "@/server/services/catalog";
 import { deviceRegister } from "@/server/services/device-register";
 import { tillSnapshot, topProducts } from "@/server/services/till";
 import { listAreas } from "@/server/services/floor";
+import { getSettings } from "@/server/services/settings";
 import { Shell } from "@/components/shell";
 import { OpenShiftPanel, RegisterPicker } from "./shift-panels";
 import { TillScreen } from "./till-screen";
@@ -27,7 +28,9 @@ export default async function CashierPage() {
       </Shell>
     );
   }
-  const areas = (await listAreas()).map((a) => ({ id: a.id, name: a.name }));
+  // Οι χώροι QR (τι δέχεται κάθε ταμείο) εμφανίζονται μόνο όταν είναι ανοιχτές οι παραγγελίες QR.
+  const [allAreas, settings] = await Promise.all([listAreas(), getSettings()]);
+  const areas = settings.qrOrdering ? allAreas.map((a) => ({ id: a.id, name: a.name })) : [];
   if (!register.openShift) {
     // Προεπιλογή QR: ο χώρος του ταμείου (αν έχει) αλλιώς όλοι οι χώροι, και τα πακέτα.
     const defaultQr = { areaIds: register.areaId && areas.some((a) => a.id === register.areaId) ? [register.areaId] : areas.map((a) => a.id), takeaway: true };

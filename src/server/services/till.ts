@@ -329,24 +329,27 @@ export async function payOrderAtTill(input: PayOrderInput, employee: TillEmploye
         .where(eq(schema.tableSessions.id, s.id));
     }
     await insertPaymentsTx(tx, { sessionId: s.id, cashSessionId: shift.id, payments: plan.payments, employeeId: employee.id, now });
-    await closeSessionTx(tx, s.id, employee.id, now);
+    // Οι κρατημένες παραγγελίες QR τυπώνονται τώρα, ολόκληρες και με τον βομβητή.
+    const released = await closeSessionTx(tx, s.id, employee.id, now);
+    const releasedOrders = new Set(released.orderIds);
     if (discountChanged) {
       await tx.insert(schema.auditLog).values({ employeeId: employee.id, action: "discount", entity: "table_session", entityId: s.id, details: { discountCents: totals.discountCents, reason: discountReason } });
     }
 
     // Η κουζίνα/μπαρ έχει ήδη τυπωμένο δελτίο χωρίς βομβητή: μικρό δελτίο «ΒΟΜΒΗΤΗΣ 12 για #003» σε όσους σταθμούς ετοιμάζουν ακόμη.
-    let slips = 0;
+    // (Όχι για όσα μόλις απελευθερώθηκαν: το δικό τους δελτίο έχει ήδη τον βομβητή.)
+    let slips = released.jobs;
     const name = s.table ? s.table.name : s.label ?? `#${s.id}`;
     if (newBuzzer) {
       const stations = new Map<number, { id: number; name: string; columns: number }>();
       for (const i of live) {
-        if ((i.status === "sent" || i.status === "preparing") && i.printStation?.enabled) stations.set(i.printStation.id, i.printStation);
+        if ((i.status === "sent" || i.status === "preparing") && i.printStation?.enabled && !releasedOrders.has(i.orderId)) stations.set(i.printStation.id, i.printStation);
       }
       const jobs = await enqueueMany(
         tx,
         [...stations.values()].map((station) => ({ station, kind: "kitchen_ticket" as const, doc: buzzerSlip({ stationName: station.name, buzzerNo, orderName: name, time: now }) })),
       );
-      slips = jobs.length;
+      slips += jobs.length;
     }
     const finalBuzzer = newBuzzer ? buzzerNo : s.buzzerNo;
     return {
@@ -393,6 +396,8 @@ export type PendingOrder = {
   dueCents: number;
   /** Ο χώρος του τραπεζιού για παραγγελίες QR από τραπέζι (null = πακέτο / χωρίς τραπέζι). */
   areaName: string | null;
+  /** Κρατημένη: η κουζίνα/μπαρ τη βλέπει μόλις πληρωθεί εδώ. */
+  held: boolean;
   /** Κανένα ανοιχτό ταμείο δεν έχει αναλάβει τον χώρο της: φαίνεται σε όλα για να μη χαθεί. */
   unassigned: boolean;
 };
@@ -419,7 +424,12 @@ export async function listPendingForTill(registerId?: number): Promise<PendingOr
     db.query.tableSessions.findMany({
       where: inArray(schema.tableSessions.status, ["open", "billed"]),
       orderBy: [asc(schema.tableSessions.openedAt)],
-      with: { table: { with: { area: true } }, items: { orderBy: [asc(schema.orderItems.id)], with: { modifiers: true } }, payments: true },
+      with: {
+        table: { with: { area: true } },
+        items: { orderBy: [asc(schema.orderItems.id)], with: { modifiers: true } },
+        payments: true,
+        orders: { columns: { held: true } },
+      },
     }),
     db
       .select({ id: schema.cashSessions.id, registerId: schema.cashSessions.registerId, qrAreaIds: schema.cashSessions.qrAreaIds, qrTakeaway: schema.cashSessions.qrTakeaway })
@@ -453,6 +463,7 @@ export async function listPendingForTill(registerId?: number): Promise<PendingOr
       paidCents: totals.paidCents,
       dueCents: totals.dueCents,
       areaName: s.table?.area?.name ?? null,
+      held: s.orders.some((o) => o.held),
       unassigned: route?.unassigned ?? false,
     };
   });

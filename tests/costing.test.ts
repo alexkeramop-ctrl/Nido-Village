@@ -79,3 +79,36 @@ describe("costing: overview from recipes and goods receipts", () => {
     expect(s.products).toBe(o.products.filter((p) => p.kind === row.kind).length);
   });
 });
+
+describe("costing: έτοιμα προϊόντα (τιμή ανά τεμάχιο, χωρίς συνταγή)", () => {
+  it("φτιάχνει την ομώνυμη πρώτη ύλη, συνταγή 1 τεμ., και κρατά την τιμή τιμολογίου όταν υπάρχει", async () => {
+    const { saveResaleItems } = await import("@/server/services/costing");
+    const db = await getDb();
+    const before = await costingOverview("last");
+    const target = before.products.find((p) => p.kind === "drink" && p.status === "norecipe");
+    expect(target).toBeTruthy();
+    const r = await saveResaleItems([{ productId: target!.productId, unitCostEuro: 0.45 }], admin.id);
+    expect(r).toEqual({ saved: 1, created: 1 });
+    const ing = (await db.select().from(schema.ingredients)).find((i) => i.name === target!.name)!;
+    expect(ing.unit).toBe("pcs");
+    expect(num(ing.costPerUnit)).toBeCloseTo(0.45, 4);
+    let row = (await costingOverview("last")).products.find((p) => p.productId === target!.productId)!;
+    expect(row.lines).toHaveLength(1);
+    expect(row.lines[0]).toMatchObject({ ingredientId: ing.id, qty: 1 });
+    expect(row.costCents).toBe(45);
+    expect(row.status).not.toBe("norecipe");
+
+    // Χωρίς τιμολόγιο ακόμη: η νέα τιμή αντικαθιστά την παλιά, χωρίς δεύτερη πρώτη ύλη.
+    expect(await saveResaleItems([{ productId: target!.productId, unitCostEuro: 0.5 }], admin.id)).toEqual({ saved: 1, created: 0 });
+    row = (await costingOverview("last")).products.find((p) => p.productId === target!.productId)!;
+    expect(row.costCents).toBe(50);
+
+    // Μετά από τιμολόγιο: κρατά η τιμή του τιμολογίου.
+    await receiveGoods({ docNumber: "ΤΔΑ 77", lines: [{ ingredientId: ing.id, qty: 24, unitCost: 0.6 }] }, admin.id);
+    await saveResaleItems([{ productId: target!.productId, unitCostEuro: 0.4 }], admin.id);
+    row = (await costingOverview("last")).products.find((p) => p.productId === target!.productId)!;
+    expect(row.costCents).toBe(60);
+    expect(row.lines[0].price).toMatchObject({ source: "receipt", docNumber: "ΤΔΑ 77" });
+    await expect(saveResaleItems([{ productId: target!.productId, unitCostEuro: -1 }], admin.id)).rejects.toThrow(/τιμή/);
+  });
+});

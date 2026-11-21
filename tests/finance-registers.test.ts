@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import { saveSettings } from "@/server/services/settings";
 import { seeded, employeeByName, productByName, tableByName } from "./helpers";
 import { daySummary, listRegisters, openRegisterShift } from "@/server/services/registers";
 import { payOrderAtTill, quickSale, type TillEmployee } from "@/server/services/till";
@@ -12,6 +13,8 @@ let cashier: TillEmployee;
 
 beforeAll(async () => {
   await seeded();
+  // Οι παραγγελίες QR είναι κλειστές στην παραγωγή (μόνο μενού)· εδώ ελέγχεται ο μηχανισμός για όταν ανοίξουν.
+  await saveSettings({ qrOrdering: true, qrPrintAfterPayment: false });
   const c = await employeeByName("Νίκος");
   cashier = { id: c.id, name: c.name, role: c.role };
 });

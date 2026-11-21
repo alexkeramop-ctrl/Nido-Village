@@ -96,6 +96,7 @@ export function OrdersSheet({
                         {o.qr ? <Badge tone="brand">QR</Badge> : <Badge>Λογαριασμός</Badge>}
                         {o.areaName && <Badge>{o.areaName}</Badge>}
                         {o.unassigned && <Badge tone="warn">Χωρίς ταμείο</Badge>}
+                        {o.held && <Badge tone="warn">Στην κουζίνα μόλις πληρωθεί</Badge>}
                         {o.ready && <Badge tone="ok">Έτοιμη</Badge>}
                         {o.partial && <Badge tone="warn">Μερική πληρωμή</Badge>}
                       </span>
@@ -187,6 +188,7 @@ function PayOrder({
           {order.customerName && <span className="font-semibold">{order.customerName}</span>}
           {order.areaName && <Badge>{order.areaName}</Badge>}
           {order.unassigned && <Badge tone="warn">Χωρίς ταμείο</Badge>}
+          {order.held && <Badge tone="warn">Στην κουζίνα μόλις πληρωθεί</Badge>}
           <span className="text-xs text-ink-3 num">{fmtTime(order.openedAt)}</span>
           {order.ready && <Badge tone="ok">Έτοιμη</Badge>}
         </div>

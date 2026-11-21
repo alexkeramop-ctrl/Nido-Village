@@ -27,6 +27,7 @@ export default async function AdminQrPage() {
       <LiveRefresh types={["session.changed"]} />
       <QrClient
         venueName={settings.venueName}
+        ordering={settings.qrOrdering}
         orderUrl={orderUrl}
         pickupUrl={pickupUrl}
         qrDataUrl={qrDataUrl}

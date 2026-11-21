@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import { saveSettings } from "@/server/services/settings";
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { seeded, employeeByName, productByName, tableByName } from "./helpers";
@@ -27,6 +28,8 @@ async function stationOfItems(sessionId: number) {
 
 beforeAll(async () => {
   const db = await seeded();
+  // Οι παραγγελίες QR είναι κλειστές στην παραγωγή (μόνο μενού)· εδώ ελέγχεται ο μηχανισμός για όταν ανοίξουν.
+  await saveSettings({ qrOrdering: true });
   const c = await employeeByName("Νίκος");
   cashier = { id: c.id, name: c.name, role: c.role };
   const areas = await db.query.areas.findMany();

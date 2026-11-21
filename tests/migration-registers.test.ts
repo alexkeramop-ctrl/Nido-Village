@@ -74,7 +74,7 @@ describe("migration 0007_registers_qr_areas_invoice_aliases", () => {
       if (/ADD COLUMN/.test(stmt) && /NOT NULL/.test(stmt)) expect(stmt).toMatch(/DEFAULT/);
     }
     const journal = JSON.parse(readFileSync("drizzle/meta/_journal.json", "utf8")) as { entries: { tag: string }[] };
-    expect(journal.entries.at(-1)?.tag).toBe("0007_registers_qr_areas_invoice_aliases");
+    expect(journal.entries.map((e) => e.tag)).toContain("0007_registers_qr_areas_invoice_aliases");
   });
 
   it("οι ανοιχτές βάρδιες δέχονται όλους τους χώρους και τα πακέτα (όπως πριν) και τα ταμεία μένουν χωρίς χώρο", async () => {
@@ -101,5 +101,17 @@ describe("migration 0007_registers_qr_areas_invoice_aliases", () => {
     const regs = await pg.query<{ area_id: number | null }>("select area_id from registers order by id");
     expect(regs.rows).toEqual([{ area_id: null }, { area_id: null }]);
     await pg.close();
+  });
+});
+
+// Η 0008 (κρατημένες παραγγελίες QR μέχρι την πληρωμή): μία στήλη με DEFAULT false, οι υπάρχουσες παραγγελίες μένουν «σταλμένες».
+describe("migration 0008_orders_held", () => {
+  it("προσθέτει μόνο τη στήλη held με DEFAULT false", () => {
+    const stmts = statements("0008_orders_held.sql");
+    expect(stmts).toEqual(['ALTER TABLE "orders" ADD COLUMN "held" boolean DEFAULT false NOT NULL;']);
+    const journal = JSON.parse(readFileSync("drizzle/meta/_journal.json", "utf8")) as { entries: { tag: string; when: number }[] };
+    expect(journal.entries.at(-1)?.tag).toBe("0008_orders_held");
+    const whens = journal.entries.map((e) => e.when);
+    expect([...whens].sort((a, b) => a - b)).toEqual(whens);
   });
 });

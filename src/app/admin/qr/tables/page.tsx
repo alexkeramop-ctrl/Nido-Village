@@ -51,7 +51,11 @@ export default async function TableQrPage({ searchParams }: { searchParams: Prom
       <style>{PRINT_CSS}</style>
       <PageHeader
         title="QR τραπεζιών"
-        subtitle="Ένα QR για κάθε τραπέζι. Ο πελάτης παραγγέλνει από το τραπέζι του και η παραγγελία πηγαίνει στο ταμείο που έχει αναλάβει τον χώρο."
+        subtitle={
+          settings.qrOrdering
+            ? "Ένα QR για κάθε τραπέζι. Ο πελάτης παραγγέλνει από το τραπέζι του και η παραγγελία πηγαίνει στο ταμείο που έχει αναλάβει τον χώρο."
+            : "Ένα QR για κάθε τραπέζι. Τώρα ανοίγει το μενού. Αν ανοίξουν οι παραγγελίες με online πληρωμή, τα ίδια QR θα δέχονται παραγγελίες από το τραπέζι χωρίς νέα εκτύπωση."
+        }
         actions={
           <>
             <Link href="/admin/qr" className="btn-secondary btn-sm">
@@ -86,8 +90,8 @@ export default async function TableQrPage({ searchParams }: { searchParams: Prom
               <div className="text-xs font-semibold">{c.areaName}</div>
               {/* eslint-disable-next-line @next/next/no-img-element -- data URL */}
               <img src={c.img} alt={`QR τραπεζιού ${c.name}`} width={180} height={180} className="w-full max-w-[180px] aspect-square mx-auto" />
-              <div className="text-sm font-semibold">Σκάναρε & παράγγειλε</div>
-              <div className="text-[10px] leading-tight">Πληρώνεις στο ταμείο</div>
+              <div className="text-sm font-semibold">{settings.qrOrdering ? "Σκάναρε & παράγγειλε" : "Σκάναρε για το μενού"}</div>
+              <div className="text-[10px] leading-tight">{settings.qrOrdering ? "Πληρώνεις στο ταμείο" : "Παραγγελία στο ταμείο"}</div>
             </div>
           ))}
         </div>

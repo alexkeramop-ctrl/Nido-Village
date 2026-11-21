@@ -11,6 +11,7 @@ import { getMenu } from "./catalog";
 import { openSession, sendRound, type CartLine } from "./ordering";
 import { getSessionDetail, lineTotalCents } from "./billing";
 import { athensDayStart, todayAthens } from "./reports";
+import { getSettings } from "./settings";
 
 export const QR_EMPLOYEE_NAME = "Πελάτης QR";
 const MAX_LINES = 30;
@@ -66,7 +67,8 @@ export async function placeQrOrder(input: QrOrderInput) {
   if (lines.some((l) => l.qty > MAX_QTY)) throw new Error(`Έως ${MAX_QTY} τεμάχια ανά είδος`);
 
   const db = await getDb();
-  const table = input.tableId ? await getQrTable(input.tableId) : null;
+  const [table, settings] = await Promise.all([input.tableId ? getQrTable(input.tableId) : Promise.resolve(null), getSettings()]);
+  if (!settings.qrOrdering) throw new Error("Οι παραγγελίες από το κινητό δεν είναι διαθέσιμες. Παράγγειλε στο ταμείο.");
   if (input.tableId && !table) throw new Error("Το τραπέζι του QR δεν βρέθηκε. Σκάναρε ξανά το QR του τραπεζιού.");
   const employeeId = await getQrEmployeeId();
   const code = await nextPickupCode();
@@ -91,6 +93,8 @@ export async function placeQrOrder(input: QrOrderInput) {
       lines.map((l) => ({ productId: l.productId, qty: Math.min(MAX_QTY, Math.round(l.qty)), modifierIds: l.modifierIds ?? [], notes: l.notes?.slice(0, 120) ?? null, course: 1 })),
       employeeId,
       input.notes?.trim().slice(0, 200) || null,
+      // «Τύπωμα μετά την πληρωμή»: η κουζίνα τη βλέπει μόλις εξοφληθεί στο ταμείο.
+      { hold: settings.qrPrintAfterPayment },
     );
   } catch (e) {
     // Άκυρη παραγγελία: ακυρώνουμε τη συνεδρία που ανοίξαμε για να μη μείνει ορφανή.
@@ -123,6 +127,8 @@ export type PublicOrder = {
   paid: boolean;
   /** Ο βομβητής που πήρε ο πελάτης όταν πλήρωσε στο ταμείο (null πριν την πληρωμή). */
   buzzerNo: number | null;
+  /** Η κουζίνα ξεκινά μόλις πληρωθεί στο ταμείο (κρατημένη παραγγελία, ακόμη απλήρωτη). */
+  waitingPayment: boolean;
   venueName?: string;
 };
 
@@ -154,7 +160,7 @@ export async function getPublicOrder(token: string): Promise<PublicOrder | null>
   const db = await getDb();
   const s = await db.query.tableSessions.findFirst({
     where: eq(schema.tableSessions.publicToken, token),
-    with: { items: { orderBy: [asc(schema.orderItems.id)], with: { modifiers: true } }, payments: true },
+    with: { items: { orderBy: [asc(schema.orderItems.id)], with: { modifiers: true } }, payments: true, orders: { columns: { held: true } } },
   });
   if (!s) return null;
   const live = s.items.filter((i) => i.status !== "voided");
@@ -177,6 +183,7 @@ export async function getPublicOrder(token: string): Promise<PublicOrder | null>
     totalCents: Math.max(0, total),
     paid: paid >= total && total > 0,
     buzzerNo: s.buzzerNo,
+    waitingPayment: s.status !== "closed" && s.status !== "cancelled" && s.orders.some((o) => o.held),
   };
 }
 
@@ -202,10 +209,12 @@ export async function listPickupBoard() {
       or(eq(schema.tableSessions.source, "qr"), isNotNull(schema.tableSessions.buzzerNo)),
     ),
     orderBy: [asc(schema.tableSessions.openedAt)],
-    with: { items: true },
+    with: { items: true, orders: { columns: { held: true } } },
   });
   const now = Date.now();
   return rows
+    // Κρατημένη απλήρωτη παραγγελία: δεν «ετοιμάζεται» ακόμη, άρα δεν μπαίνει στον πίνακα.
+    .filter((s) => !(s.status !== "closed" && s.orders.some((o) => o.held)))
     .map((s) => ({
       sessionId: s.id,
       code: s.pickupCode ?? String(s.id),

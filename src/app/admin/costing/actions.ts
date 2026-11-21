@@ -7,6 +7,7 @@ import { requireRole } from "@/server/auth";
 import { audit } from "@/server/audit";
 import { setRecipe, upsertIngredient } from "@/server/services/inventory";
 import { saveSettings } from "@/server/services/settings";
+import { saveResaleItems } from "@/server/services/costing";
 import type { StockUnit } from "@/db/schema";
 
 const UNITS: StockUnit[] = ["g", "kg", "ml", "l", "pcs"];
@@ -64,5 +65,16 @@ export async function saveCostTargetsAction(foodPct: number, drinkPct: number) {
     for (const v of [foodPct, drinkPct]) if (!(v > 0 && v < 100)) throw new Error("Ο στόχος πρέπει να είναι από 1% έως 99%");
     await saveSettings({ foodCostTargetPct: Math.round(foodPct * 10) / 10, drinkCostTargetPct: Math.round(drinkPct * 10) / 10 });
     revalidateCosting();
+  });
+}
+
+/** Έτοιμα προϊόντα: τιμή αγοράς ανά τεμάχιο αντί για συνταγή (βλ. saveResaleItems). */
+export async function saveResaleItemsAction(items: { productId: number; unitCostEuro: number | null }[]) {
+  return run(async () => {
+    const me = await requireRole("manager", "admin");
+    const list = (Array.isArray(items) ? items : []).slice(0, 300).map((i) => ({ productId: Number(i?.productId), unitCostEuro: i?.unitCostEuro === null ? null : Number(i?.unitCostEuro) }));
+    const r = await saveResaleItems(list, me.id);
+    revalidateCosting();
+    return r;
   });
 }

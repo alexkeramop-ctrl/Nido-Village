@@ -114,6 +114,8 @@ export type SendRoundCtx = {
   notes?: string | null;
   stations: RoundContext["stations"];
   now: Date;
+  /** Κρατημένη (QR μέχρι την πληρωμή): γράφεται αλλά δεν τυπώνεται και δεν φαίνεται στην κουζίνα (βλ. held-orders.ts). */
+  hold?: boolean;
 };
 
 /**
@@ -131,7 +133,7 @@ export async function sendRoundTx(tx: DbLike, ctx: SendRoundCtx) {
   };
   const [order] = await tx
     .insert(schema.orders)
-    .values({ sessionId: ctx.sessionId, roundNo: ctx.roundNo, employeeId: ctx.employee.id, notes: ctx.notes?.trim() || null, createdAt: ctx.now })
+    .values({ sessionId: ctx.sessionId, roundNo: ctx.roundNo, employeeId: ctx.employee.id, notes: ctx.notes?.trim() || null, createdAt: ctx.now, held: Boolean(ctx.hold) })
     .returning();
 
   const rows = ctx.resolved.map(({ line, product }) => ({
@@ -168,6 +170,7 @@ export async function sendRoundTx(tx: DbLike, ctx: SendRoundCtx) {
 
   const byStation = new Map<number, KitchenItem[]>();
   ctx.resolved.forEach(({ line, product, mods }, i) => {
+    if (ctx.hold) return;
     const stationId = items[i].printStationId;
     if (stationId === null || !stationById.has(stationId)) return;
     const arr = byStation.get(stationId) ?? [];
@@ -228,7 +231,7 @@ export async function recordOrderSlip(input: { sessionId: number; orderId: numbe
 }
 
 /** Αποστολή γύρου παραγγελίας: εγγραφή, αφαίρεση αποθέματος, δελτίο παραγγελίας, εκτύπωση κουζίνας. */
-export async function sendRound(sessionId: number, cart: CartLine[], employeeId: number, notes?: string | null) {
+export async function sendRound(sessionId: number, cart: CartLine[], employeeId: number, notes?: string | null, opts: { hold?: boolean } = {}) {
   const db = await getDb();
   const lines = cart.filter((l) => l.qty > 0);
   if (!lines.length) throw new Error("Η παραγγελία είναι κενή");
@@ -266,6 +269,7 @@ export async function sendRound(sessionId: number, cart: CartLine[], employeeId:
       notes,
       stations: round.stations,
       now,
+      hold: opts.hold,
     });
     if (session.status === "billed") {
       await tx.update(schema.tableSessions).set({ status: "open" }).where(eq(schema.tableSessions.id, sessionId));
@@ -289,7 +293,7 @@ export async function voidItem(itemId: number, reason: string, employeeId: numbe
   if (!reason.trim()) throw new Error("Απαιτείται αιτία ακύρωσης");
   const item = await db.query.orderItems.findFirst({
     where: eq(schema.orderItems.id, itemId),
-    with: { modifiers: true, session: { with: { table: true } }, printStation: true },
+    with: { modifiers: true, session: { with: { table: true } }, printStation: true, order: true },
   });
   if (!item) throw new Error("Το είδος δεν βρέθηκε");
   if (item.status === "voided") throw new Error("Έχει ήδη ακυρωθεί");
@@ -316,7 +320,8 @@ export async function voidItem(itemId: number, reason: string, employeeId: numbe
       reason,
       sessionId: item.sessionId,
     });
-    if (item.printStation && item.printStation.enabled && item.status !== "served") {
+    // Κρατημένη παραγγελία (QR χωρίς πληρωμή): η κουζίνα δεν την έχει δει, άρα δεν χρειάζεται δελτίο ακύρωσης.
+    if (item.printStation && item.printStation.enabled && item.status !== "served" && !item.order.held) {
       await enqueue(
         tx,
         item.printStation.id,
@@ -413,6 +418,8 @@ export async function getKdsTickets(stationId?: number | null): Promise<KdsTicke
   const map = new Map<number, KdsTicket>();
   for (const it of items) {
     const o = it.order;
+    // Κρατημένη παραγγελία QR: εμφανίζεται μόνο αφού πληρωθεί.
+    if (o.held) continue;
     let t = map.get(o.id);
     if (!t) {
       t = {

@@ -57,6 +57,13 @@
       "when": 1795241672876,
       "tag": "0007_registers_qr_areas_invoice_aliases",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795244004319,
+      "tag": "0008_orders_held",
+      "breakpoints": true
     }
   ]
 }

@@ -75,12 +75,17 @@ export function OrderClient({
   contact,
   table = null,
   tableMissing = false,
+  printAfterPayment = false,
+  ordering = true,
 }: {
   menu: Menu;
   venueName: string;
   contact: VenueContact;
   table?: QrTableInfo | null;
   tableMissing?: boolean;
+  printAfterPayment?: boolean;
+  /** false = μόνο μενού (χωρίς καλάθι/παραγγελία). */
+  ordering?: boolean;
 }) {
   const { toast, element } = useToast();
   const [pending, start] = useTransition();
@@ -194,11 +199,17 @@ export function OrderClient({
             <Mark height={44} />
             <div className="min-w-0">
               <div className="text-[11px] uppercase tracking-widest text-ink-3 font-semibold truncate">{venueName}</div>
-              <h1 className="text-xl font-bold leading-tight text-brand">{table ? `Τραπέζι ${table.name}` : "Παραγγελία για παραλαβή"}</h1>
+              <h1 className="text-xl font-bold leading-tight text-brand">{!ordering ? "Μενού" : table ? `Τραπέζι ${table.name}` : "Παραγγελία για παραλαβή"}</h1>
               {table && <div className="text-xs font-semibold text-ink-2 truncate" data-testid="qr-table">{table.areaName}</div>}
             </div>
           </div>
-          <p className="text-xs text-ink-2 mt-2">Παράγγειλε εδώ και πέρασε από το ταμείο να πληρώσεις και να πάρεις βομβητή.</p>
+          <p className="text-xs text-ink-2 mt-2">
+            {!ordering
+              ? "Παραγγελία και πληρωμή στο ταμείο. Παίρνεις βομβητή και σε ειδοποιεί όταν είναι έτοιμο."
+              : printAfterPayment
+              ? "Παράγγειλε εδώ και πέρασε από το ταμείο να πληρώσεις. Η ετοιμασία ξεκινά μόλις πληρώσεις και παίρνεις βομβητή."
+              : "Παράγγειλε εδώ και πέρασε από το ταμείο να πληρώσεις και να πάρεις βομβητή."}
+          </p>
           {tableMissing && (
             <p className="text-xs font-semibold text-danger mt-1">Το τραπέζι του QR δεν βρέθηκε. Η παραγγελία θα γίνει για παραλαβή από το ταμείο.</p>
           )}
@@ -227,7 +238,7 @@ export function OrderClient({
         )}
       </div>
 
-      <main className="flex-1 px-3 pt-3 pb-32 space-y-6">
+      <main className={`flex-1 px-3 pt-3 space-y-6 ${ordering ? "pb-32" : "pb-8"}`}>
         {menu.length === 0 ? (
           <div className="card p-8 text-center text-ink-3">
             <div className="text-lg font-medium text-ink-2">Το μενού δεν είναι διαθέσιμο αυτή τη στιγμή</div>
@@ -243,6 +254,18 @@ export function OrderClient({
               <ul className="card divide-y divide-line overflow-hidden">
                 {c.products.map((p) => {
                   const qty = inCart.get(p.id) ?? 0;
+                  if (!ordering) {
+                    const extras = p.modifierGroups.flatMap((g) => g.modifiers.map((m) => (m.priceDeltaCents ? `${m.name} +${formatEuro(m.priceDeltaCents)}` : m.name)));
+                    return (
+                      <li key={p.id} className="px-4 py-3.5 flex items-start gap-3" data-testid="menu-item">
+                        <div className="min-w-0 flex-1">
+                          <div className="font-semibold leading-snug">{p.name}</div>
+                          {extras.length > 0 && <div className="text-xs text-ink-3 mt-0.5">{extras.join(" · ")}</div>}
+                        </div>
+                        <Money cents={p.priceCents} className="font-semibold text-ink-2 shrink-0" />
+                      </li>
+                    );
+                  }
                   return (
                     <li key={p.id}>
                       <button
@@ -271,7 +294,7 @@ export function OrderClient({
         <ContactFooter contact={contact} className="pt-2" />
       </main>
 
-      {menu.length > 0 && (
+      {ordering && menu.length > 0 && (
         <div
           className="fixed bottom-0 inset-x-0 z-30 bg-surface-2 border-t border-line"
           style={{ paddingBottom: "env(safe-area-inset-bottom)" }}

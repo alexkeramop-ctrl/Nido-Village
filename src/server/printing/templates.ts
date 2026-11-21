@@ -61,7 +61,7 @@ export function kitchenTicket(i: KitchenTicketInput): TicketDoc {
     t.center(head, true);
   } else t.title(head);
   if (i.label && i.label !== i.tableName) t.center(i.label, true);
-  if (i.customerName && i.customerName !== i.label && !i.tableName.includes(i.customerName)) t.center(i.customerName, true);
+  if (i.customerName && !(i.label ?? "").includes(i.customerName) && !i.tableName.includes(i.customerName)) t.center(i.customerName, true);
   t.row(`Γύρος ${i.roundNo}`, fmtTime(i.time));
   t.row(`Σερβ.: ${i.waiter}`, fmtDateTime(i.time).slice(0, 10));
   t.hr("=");

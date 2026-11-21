@@ -10,9 +10,12 @@
  *
  * Το ποσοστό υπολογίζεται πάνω στην ΚΑΘΑΡΗ τιμή πώλησης (χωρίς ΦΠΑ). Οι τιμές αγοράς θεωρούνται χωρίς ΦΠΑ.
  */
-import { desc, eq, isNotNull } from "drizzle-orm";
+import { desc, eq, inArray, isNotNull } from "drizzle-orm";
 import { getDb, schema } from "@/db";
-import { num } from "@/server/money";
+import { num, qty4 } from "@/server/money";
+import { audit } from "@/server/audit";
+import { normalizeItemKey } from "@/lib/invoice-match";
+import { setRecipe, upsertIngredient } from "./inventory";
 import type { StockUnit } from "@/db/schema";
 import { getSettings } from "./settings";
 import { addDays, salesByProduct, todayAthens } from "./reports";
@@ -267,4 +270,43 @@ export async function costingOverview(basis: CostBasis = "last") {
     .sort((a, b) => a.name.localeCompare(b.name, "el"));
 
   return { basis, today, targets, products: result, summary: { food: summarize("food"), drink: summarize("drink") }, ingredients: ingredientOptions };
+}
+
+/**
+ * Έτοιμα προϊόντα (αναψυκτικά, νερά, μπύρες σε φιάλη): χωρίς συνταγή, μόνο τιμή αγοράς ανά τεμάχιο.
+ * Για κάθε προϊόν βρίσκει (ή φτιάχνει) την πρώτη ύλη με το ίδιο όνομα σε τεμάχια και ορίζει συνταγή «1 τεμάχιο».
+ * Έτσι μετρά και το απόθεμα, και το τιμολόγιο του προμηθευτή ενημερώνει μόνο του την τιμή.
+ * Η τιμή που γράφεται εδώ μπαίνει στην πρώτη ύλη μόνο αν δεν έχει ακόμη τιμολόγιο (από εκεί και πέρα κρατά η τιμή τιμολογίου).
+ */
+export async function saveResaleItems(list: { productId: number; unitCostEuro: number | null }[], employeeId: number) {
+  const db = await getDb();
+  if (!list.length) throw new Error("Δεν δόθηκε κανένα προϊόν");
+  for (const i of list) {
+    if (!Number.isInteger(i.productId) || i.productId <= 0) throw new Error("Μη έγκυρο προϊόν");
+    if (i.unitCostEuro !== null && !(i.unitCostEuro >= 0 && i.unitCostEuro < 1000)) throw new Error("Μη έγκυρη τιμή αγοράς");
+  }
+  const ids = [...new Set(list.map((i) => i.productId))];
+  const products = await db.select({ id: schema.products.id, name: schema.products.name }).from(schema.products).where(inArray(schema.products.id, ids));
+  if (products.length !== ids.length) throw new Error("Κάποιο προϊόν δεν βρέθηκε. Ανανέωσε τη σελίδα.");
+  const ingredients = await db.select().from(schema.ingredients).where(eq(schema.ingredients.active, true));
+  const received = new Set((await db.selectDistinct({ id: schema.goodsReceiptLines.ingredientId }).from(schema.goodsReceiptLines)).map((r) => r.id));
+  let created = 0;
+  let saved = 0;
+  for (const item of list) {
+    const product = products.find((p) => p.id === item.productId)!;
+    const key = normalizeItemKey(product.name);
+    let ing = ingredients.find((x) => x.unit === "pcs" && normalizeItemKey(x.name) === key);
+    if (!ing) {
+      if (item.unitCostEuro === null) continue;
+      ing = await upsertIngredient({ name: product.name, unit: "pcs", costPerUnit: item.unitCostEuro, packSize: null });
+      ingredients.push(ing);
+      created++;
+    } else if (item.unitCostEuro !== null && !received.has(ing.id) && Math.abs(num(ing.costPerUnit) - item.unitCostEuro) > 0.00005) {
+      await db.update(schema.ingredients).set({ costPerUnit: qty4(item.unitCostEuro) }).where(eq(schema.ingredients.id, ing.id));
+    }
+    await setRecipe({ productId: product.id }, [{ ingredientId: ing.id, qty: 1 }]);
+    saved++;
+  }
+  await audit(db, employeeId, "resale_items", "catalog", null, { saved, created });
+  return { saved, created };
 }

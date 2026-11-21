@@ -267,6 +267,11 @@ export const orders = pgTable(
       .references(() => employees.id),
     notes: text(),
     createdAt: ts().notNull().defaultNow(),
+    /**
+     * Κρατημένη παραγγελία QR: καταγράφεται αλλά ΔΕΝ τυπώνεται ούτε φαίνεται στην κουζίνα/μπαρ μέχρι να πληρωθεί στο ταμείο.
+     * Με την πληρωμή γίνεται false, τα δελτία τυπώνονται (με τον βομβητή) και το createdAt γίνεται η ώρα αποστολής.
+     */
+    held: boolean().notNull().default(false),
   },
   (t) => [index("orders_session_idx").on(t.sessionId)],
 );

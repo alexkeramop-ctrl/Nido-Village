@@ -8,12 +8,18 @@ import { addPayment } from "@/server/services/billing";
 import { getFloor, saveTablePositions, saveFloorLayout, saveAreaPlan, autoLayoutArea, setAreaMap, listAreas } from "@/server/services/floor";
 import { saveAsset, getAsset } from "@/server/services/assets";
 import { loginWithPin } from "@/server/auth";
+import { saveSettings } from "@/server/services/settings";
 
 beforeAll(async () => {
   await seeded();
 });
 
 describe("QR takeaway ordering", () => {
+  // Η ροή «τύπωμα αμέσως» (ρύθμιση qrPrintAfterPayment = false). Η προεπιλογή «μετά την πληρωμή»: tests/qr-hold.test.ts.
+  beforeAll(async () => {
+    await saveSettings({ qrOrdering: true, qrPrintAfterPayment: false });
+  });
+
   it("places an order, tracks status to ready and pickup, then payment closes it", async () => {
     const db = await getDb();
     const menu = await getPublicMenu();

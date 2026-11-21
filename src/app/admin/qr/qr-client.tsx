@@ -32,7 +32,22 @@ function shortUrl(url: string): string {
   return url.replace(/^https?:\/\//, "");
 }
 
-export function QrClient({ venueName, orderUrl, pickupUrl, qrDataUrl, orders }: { venueName: string; orderUrl: string; pickupUrl: string; qrDataUrl: string; orders: QrOrderRow[] }) {
+export function QrClient({
+  venueName,
+  ordering,
+  orderUrl,
+  pickupUrl,
+  qrDataUrl,
+  orders,
+}: {
+  venueName: string;
+  /** false: το QR δείχνει μόνο το μενού (οι παραγγελίες QR θα ανοίξουν μαζί με online πληρωμή). */
+  ordering: boolean;
+  orderUrl: string;
+  pickupUrl: string;
+  qrDataUrl: string;
+  orders: QrOrderRow[];
+}) {
   const { run, pending, toast, toastElement } = useActionRunner();
   const [copied, setCopied] = useState<string | null>(null);
 
@@ -55,8 +70,12 @@ export function QrClient({ venueName, orderUrl, pickupUrl, qrDataUrl, orders }: 
       {toastElement}
       <style>{PRINT_CSS}</style>
       <PageHeader
-        title="QR & Παραλαβές"
-        subtitle="Οι πελάτες σκανάρουν το QR, παραγγέλνουν από το κινητό τους και πληρώνουν στο ταμείο όταν παραλάβουν."
+        title={ordering ? "QR & Παραλαβές" : "QR μενού & Παραλαβές"}
+        subtitle={
+          ordering
+            ? "Οι πελάτες σκανάρουν το QR, παραγγέλνουν από το κινητό τους και πληρώνουν στο ταμείο όταν παραλάβουν."
+            : "Το QR ανοίγει το μενού με τις τιμές. Παραγγελία και πληρωμή γίνονται στο ταμείο. Οι παραγγελίες από το κινητό θα ανοίξουν μόνο μαζί με online πληρωμή."
+        }
         actions={
           <>
             <Link href="/admin/qr/tables" className="btn-secondary btn-sm" data-testid="table-qr-link">
@@ -73,13 +92,13 @@ export function QrClient({ venueName, orderUrl, pickupUrl, qrDataUrl, orders }: 
       />
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Section title="QR παραγγελίας">
+        <Section title={ordering ? "QR παραγγελίας" : "QR μενού"}>
           <div className="flex flex-col sm:flex-row gap-4 items-start">
             {/* eslint-disable-next-line @next/next/no-img-element -- data URL, δεν χρειάζεται βελτιστοποίηση */}
             <img src={qrDataUrl} alt={`QR για ${orderUrl}`} width={192} height={192} className="w-48 h-48 rounded-xl border border-line bg-white shrink-0" data-testid="qr-image" />
             <div className="min-w-0 flex-1 space-y-3">
               <div>
-                <div className="label">Σύνδεσμος παραγγελίας</div>
+                <div className="label">{ordering ? "Σύνδεσμος παραγγελίας" : "Σύνδεσμος μενού"}</div>
                 <code className="block break-all rounded-lg bg-surface-3 px-3 py-2 text-sm">{orderUrl}</code>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -123,73 +142,75 @@ export function QrClient({ venueName, orderUrl, pickupUrl, qrDataUrl, orders }: 
       <Section title="Καρτέλα για το τραπέζι / ταμείο" actions={<span className="text-xs text-ink-3">Προεπισκόπηση εκτύπωσης · «Εκτύπωση» τυπώνει μόνο αυτό</span>}>
         <div id="qr-tent" className="mx-auto max-w-sm rounded-2xl border-2 border-dashed border-[#cfcfc8] bg-white text-[#16181d] p-8 text-center space-y-4 [&_*]:text-[#16181d]">
           <div className="text-3xl font-black tracking-tight">{venueName}</div>
-          <div className="text-lg font-semibold">Σκάναρε για παραγγελία take away</div>
+          <div className="text-lg font-semibold">{ordering ? "Σκάναρε για παραγγελία take away" : "Σκάναρε για το μενού"}</div>
           {/* eslint-disable-next-line @next/next/no-img-element -- data URL */}
           <img src={qrDataUrl} alt="" width={256} height={256} className="w-64 h-64 mx-auto" />
           <div className="text-base font-mono break-all">{shortUrl(orderUrl)}</div>
-          <div className="text-sm text-ink-2">Παραγγέλνεις από το κινητό σου · Πληρώνεις στο ταμείο όταν παραλάβεις</div>
+          <div className="text-sm text-ink-2">{ordering ? "Παραγγέλνεις από το κινητό σου · Πληρώνεις στο ταμείο όταν παραλάβεις" : "Παραγγελία και πληρωμή στο ταμείο"}</div>
         </div>
       </Section>
 
-      <Section title="Πρόσφατες παραγγελίες QR" flush actions={<span className="text-xs text-ink-3 num">{orders.length}</span>}>
-        {orders.length === 0 ? (
-          <div className="p-4">
-            <EmptyState title="Καμία παραγγελία QR ακόμη" hint="Μόλις κάποιος πελάτης παραγγείλει από το QR, θα εμφανιστεί εδώ." />
-          </div>
-        ) : (
-          <TableWrap>
-            <thead>
-              <tr>
-                <th>Κωδικός</th>
-                <th>Όνομα</th>
-                <th>Τηλέφωνο</th>
-                <th>Κατάσταση</th>
-                <th>Ώρα</th>
-                <th className="text-right">Σύνολο</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.map((o) => {
-                const open = o.status === "received" || o.status === "preparing" || o.status === "ready";
-                const canReady = o.status === "received" || o.status === "preparing";
-                return (
-                  <tr key={o.sessionId} data-testid={`qr-order-${o.code}`}>
-                    <td className="font-bold num">#{o.code}</td>
-                    <td>{o.customerName || "—"}</td>
-                    <td className="num">{o.customerPhone || "—"}</td>
-                    <td>
-                      <Badge tone={QR_STATUS_TONE[o.status]}>{QR_STATUS_LABEL[o.status]}</Badge>
-                    </td>
-                    <td className="num whitespace-nowrap">{fmtDateTime(o.openedAt)}</td>
-                    <td className="text-right">
-                      <Money cents={o.totalCents} className="font-semibold" />
-                    </td>
-                    <td className="text-right whitespace-nowrap">
-                      {canReady && (
-                        <button
-                          type="button"
-                          className="btn btn-sm bg-ok text-white hover:bg-green-800 mr-2"
-                          disabled={pending}
-                          onClick={() => markReady(o)}
-                          aria-label={`Έτοιμη η παραγγελία #${o.code}`}
-                        >
-                          Έτοιμη
-                        </button>
-                      )}
-                      {open && (
-                        <button type="button" className="btn-secondary btn-sm" disabled={pending} onClick={() => pickedUp(o)} aria-label={`Παραδόθηκε η παραγγελία #${o.code}`}>
-                          Παραδόθηκε
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </TableWrap>
-        )}
-      </Section>
+      {(ordering || orders.length > 0) && (
+        <Section title="Πρόσφατες παραγγελίες QR" flush actions={<span className="text-xs text-ink-3 num">{orders.length}</span>}>
+          {orders.length === 0 ? (
+            <div className="p-4">
+              <EmptyState title="Καμία παραγγελία QR ακόμη" hint="Μόλις κάποιος πελάτης παραγγείλει από το QR, θα εμφανιστεί εδώ." />
+            </div>
+          ) : (
+            <TableWrap>
+              <thead>
+                <tr>
+                  <th>Κωδικός</th>
+                  <th>Όνομα</th>
+                  <th>Τηλέφωνο</th>
+                  <th>Κατάσταση</th>
+                  <th>Ώρα</th>
+                  <th className="text-right">Σύνολο</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {orders.map((o) => {
+                  const open = o.status === "received" || o.status === "preparing" || o.status === "ready";
+                  const canReady = o.status === "received" || o.status === "preparing";
+                  return (
+                    <tr key={o.sessionId} data-testid={`qr-order-${o.code}`}>
+                      <td className="font-bold num">#{o.code}</td>
+                      <td>{o.customerName || "—"}</td>
+                      <td className="num">{o.customerPhone || "—"}</td>
+                      <td>
+                        <Badge tone={QR_STATUS_TONE[o.status]}>{QR_STATUS_LABEL[o.status]}</Badge>
+                      </td>
+                      <td className="num whitespace-nowrap">{fmtDateTime(o.openedAt)}</td>
+                      <td className="text-right">
+                        <Money cents={o.totalCents} className="font-semibold" />
+                      </td>
+                      <td className="text-right whitespace-nowrap">
+                        {canReady && (
+                          <button
+                            type="button"
+                            className="btn btn-sm bg-ok text-white hover:bg-green-800 mr-2"
+                            disabled={pending}
+                            onClick={() => markReady(o)}
+                            aria-label={`Έτοιμη η παραγγελία #${o.code}`}
+                          >
+                            Έτοιμη
+                          </button>
+                        )}
+                        {open && (
+                          <button type="button" className="btn-secondary btn-sm" disabled={pending} onClick={() => pickedUp(o)} aria-label={`Παραδόθηκε η παραγγελία #${o.code}`}>
+                            Παραδόθηκε
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </TableWrap>
+          )}
+        </Section>
+      )}
     </div>
   );
 }

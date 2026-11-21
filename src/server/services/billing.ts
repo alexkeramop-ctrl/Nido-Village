@@ -13,6 +13,7 @@ import { enqueue, findReceiptStation } from "@/server/printing/queue";
 import { billTicket, receiptTicket, type BillLine, type VatBreakdown } from "@/server/printing/templates";
 import { getSettings } from "./settings";
 import { logoImage } from "@/server/printing/logo";
+import { releaseHeldOrdersTx } from "./held-orders";
 
 type ItemWithMods = {
   qty: number;
@@ -183,8 +184,10 @@ export async function insertPaymentsTx(
   return rows.sort((a, b) => a.id - b.id);
 }
 
+/** Κλείνει (εξοφλεί) μια συνεδρία. Οι κρατημένες παραγγελίες QR της στέλνονται τώρα στην κουζίνα/μπαρ. */
 export async function closeSessionTx(tx: DbLike, sessionId: number, employeeId: number, now: Date = new Date()) {
   await tx.update(schema.tableSessions).set({ status: "closed", closedAt: now, closedBy: employeeId }).where(eq(schema.tableSessions.id, sessionId));
+  return releaseHeldOrdersTx(tx, sessionId, now);
 }
 
 /**
@@ -244,11 +247,15 @@ export async function addPayment(
       employeeId,
     });
     const closed = due - amount <= 0;
-    if (closed) await closeSessionTx(tx, sessionId, employeeId);
-    return { payment, closed };
+    const released = closed ? await closeSessionTx(tx, sessionId, employeeId) : null;
+    return { payment, closed, released: released?.orderIds.length ?? 0 };
   });
 
   if (result.closed) await issueReceiptForSession(sessionId, employeeId);
+  if (result.released) {
+    emit({ type: "print.changed" });
+    emit({ type: "kds.changed" });
+  }
   emit({ type: "session.changed", sessionId });
   emit({ type: "floor.changed" });
   return { payment: result.payment, closed: result.closed, changeCents: change };
