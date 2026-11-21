@@ -633,6 +633,7 @@ try {
       "/admin/menu",
       "/admin/modifiers",
       "/admin/inventory",
+      "/admin/costing",
       "/admin/floor",
       "/admin/tables",
       "/admin/qr",
@@ -645,6 +646,13 @@ try {
       await visit(admin, r);
       await admin.locator("main").first().waitFor();
       await shot(admin, "admin" + r.replace(/\//g, "-"));
+    }
+    // Κοστολόγηση: τα demo προϊόντα έχουν συνταγές, οπότε βγαίνει food cost και drink cost.
+    await visit(admin, "/admin/costing");
+    await admin.getByTestId("costing-rows").waitFor();
+    for (const k of ["food", "drink"]) {
+      const txt = await admin.getByTestId(`summary-${k}`).innerText();
+      check(/\d+,\d%/.test(txt), `admin/costing: δεν υπολογίστηκε ${k} cost`);
     }
     await visit(admin, "/admin/qr");
     const choices = await admin.getByRole("group", { name: "QR για" }).getByRole("button").allInnerTexts();

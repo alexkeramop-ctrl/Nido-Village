@@ -31,6 +31,7 @@ const GROUPS: { title: string | null; items: Item[] }[] = [
       { href: "/admin/menu", label: "Μενού", icon: "🍔" },
       { href: "/admin/modifiers", label: "Επιλογές ειδών", icon: "➕" },
       { href: "/admin/inventory", label: "Αποθήκη", icon: "📦" },
+      { href: "/admin/costing", label: "Κοστολόγηση", icon: "🧮" },
     ],
   },
   {

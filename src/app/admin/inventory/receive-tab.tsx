@@ -100,7 +100,7 @@ export function ReceiveTab({ ingredients, suppliers, today, receipts }: { ingred
                 <tr>
                   <th className="w-1/2">Πρώτη ύλη</th>
                   <th>Ποσότητα</th>
-                  <th>Κόστος/μον. (€)</th>
+                  <th>Κόστος/μον. χωρίς ΦΠΑ (€)</th>
                   <th className="text-right">Σύνολο</th>
                   <th></th>
                 </tr>

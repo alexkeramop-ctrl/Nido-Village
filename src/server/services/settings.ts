@@ -12,6 +12,10 @@ export type VenueSettings = {
   email: string;
   /** Προεπιλεγμένος αριθμός πιάτων (courses) στο PDA. */
   courses: number;
+  /** Στόχος food cost (% της καθαρής τιμής πώλησης) για την Κοστολόγηση. */
+  foodCostTargetPct: number;
+  /** Στόχος drink cost (% της καθαρής τιμής πώλησης) για την Κοστολόγηση. */
+  drinkCostTargetPct: number;
 };
 
 export const DEFAULT_SETTINGS: VenueSettings = {
@@ -22,6 +26,8 @@ export const DEFAULT_SETTINGS: VenueSettings = {
   phone: "",
   email: "info@nidovillage.gr",
   courses: 1,
+  foodCostTargetPct: 30,
+  drinkCostTargetPct: 22,
 };
 
 export async function getSettings(): Promise<VenueSettings> {
