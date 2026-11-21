@@ -315,3 +315,40 @@ describe("γρήγορη πώληση ταμείου", () => {
     expect(await counts()).toEqual(before);
   });
 });
+
+describe("αλλαγή τιμών ενώ το ταμείο είναι ανοιχτό", () => {
+  it("το αποτύπωμα καταλόγου αλλάζει με την τιμή και η πώληση με παλιό σύνολο απορρίπτεται με σαφές μήνυμα", async () => {
+    const { catalogVersion } = await import("@/server/services/till");
+    const db = await getDb();
+    const water = await productByName("Νερό 1L");
+    const v1 = await catalogVersion(db);
+    expect(await catalogVersion(db)).toBe(v1);
+
+    const oldPrice = water.priceCents;
+    await db.update(schema.products).set({ priceCents: oldPrice + 50 }).where(eq(schema.products.id, water.id));
+    const v2 = await catalogVersion(db);
+    expect(v2).not.toBe(v1);
+
+    // Το ταμείο έβλεπε την παλιά τιμή: απορρίπτεται και λέει το σωστό σύνολο. Τίποτα δεν γράφεται.
+    const sessionsBefore = (await db.select({ n: sql<number>`count(*)::int` }).from(schema.tableSessions))[0].n;
+    const stale = ref();
+    await expect(
+      quickSale({ cashSessionId: shift1, clientRef: stale, lines: [{ productId: water.id, qty: 1 }], tender: { cashCents: oldPrice, cardCents: 0 }, expectedTotalCents: oldPrice }, cashier),
+    ).rejects.toThrow(/Άλλαξαν οι τιμές στο μενού/);
+    expect((await db.select({ n: sql<number>`count(*)::int` }).from(schema.tableSessions))[0].n).toBe(sessionsBefore);
+
+    // Με το νέο σύνολο περνά.
+    const ok = await quickSale(
+      { cashSessionId: shift1, clientRef: ref(), lines: [{ productId: water.id, qty: 1 }], tender: { cashCents: oldPrice + 50, cardCents: 0 }, expectedTotalCents: oldPrice + 50 },
+      cashier,
+    );
+    expect(ok.totalCents).toBe(oldPrice + 50);
+
+    // Επανάληψη πώλησης που ΕΧΕΙ ήδη καταχωρηθεί: επιστρέφει την ίδια, ακόμη κι αν στο μεταξύ άλλαξε η τιμή.
+    const key = ref();
+    const first = await quickSale({ cashSessionId: shift1, clientRef: key, lines: [{ productId: water.id, qty: 2 }], tender: { cashCents: 2 * (oldPrice + 50), cardCents: 0 }, expectedTotalCents: 2 * (oldPrice + 50) }, cashier);
+    await db.update(schema.products).set({ priceCents: oldPrice }).where(eq(schema.products.id, water.id));
+    const again = await quickSale({ cashSessionId: shift1, clientRef: key, lines: [{ productId: water.id, qty: 2 }], tender: { cashCents: 2 * (oldPrice + 50), cardCents: 0 }, expectedTotalCents: 2 * (oldPrice + 50) }, cashier);
+    expect(again).toMatchObject({ sessionId: first.sessionId, duplicate: true });
+  });
+});

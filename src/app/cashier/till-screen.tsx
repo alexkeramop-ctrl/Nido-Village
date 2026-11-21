@@ -45,6 +45,20 @@ function withSale(shift: ShiftDto, sale: SaleResult): ShiftDto {
 
 type Shown = { product: MenuProduct; color: string };
 
+/** Οι γραμμές του καλαθιού με τις τρέχουσες τιμές του μενού. Επιστρέφει το ίδιο array αν δεν άλλαξε τίποτα. */
+function repriceCart(cart: UiLine[], menu: Menu): UiLine[] {
+  const byId = new Map(menu.flatMap((c) => c.products).map((p) => [p.id, p]));
+  const next = cart.map((l) => {
+    const p = byId.get(l.productId);
+    if (!p) return l;
+    const deltas = new Map(p.modifierGroups.flatMap((g) => g.modifiers).map((m) => [m.id, m.priceDeltaCents]));
+    const modifiers = l.modifiers.map((m) => ({ ...m, priceDeltaCents: deltas.get(m.id) ?? m.priceDeltaCents }));
+    if (p.priceCents === l.unitPriceCents && modifiers.every((m, i) => m.priceDeltaCents === l.modifiers[i].priceDeltaCents)) return l;
+    return { ...l, unitPriceCents: p.priceCents, modifiers };
+  });
+  return next.some((l, i) => l !== cart[i]) ? next : cart;
+}
+
 /**
  * Το ταμείο self-service: μία οθόνη, χωρίς αλλαγή σελίδας ανά πώληση.
  * Αριστερά οι κατηγορίες, στη μέση τα είδη, δεξιά το καλάθι και η πληρωμή. Ο κατάλογος φορτώνεται μία φορά με τη σελίδα·
@@ -121,6 +135,30 @@ export function TillScreen({
     { pollMs: 15000 },
   );
 
+  // Άλλαξε ο κατάλογος (τιμή, είδος, επιλογή): ξαναφορτώνεται το μενού. Χρειάζεται στο Cloudflare, όπου το ταμείο
+  // μαθαίνει τις αλλαγές μόνο από τον έλεγχο ανά 15″ (χωρίς ζωντανά μηνύματα).
+  const reloadingFor = useRef<string | null>(null);
+  useEffect(() => {
+    const v = snap.catalogVersion;
+    if (!v || v === initial.catalogVersion || reloadingFor.current === v) return;
+    reloadingFor.current = v;
+    startTransition(() => router.refresh());
+  }, [snap.catalogVersion, initial.catalogVersion, router]);
+
+  // Νέο μενού: οι γραμμές του καλαθιού παίρνουν τις τρέχουσες τιμές, ώστε το σύνολο να είναι πάντα το σωστό.
+  // (Προσαρμογή κατά το render όταν αλλάζει το prop· όχι effect.)
+  const [menuSeen, setMenuSeen] = useState(menu);
+  const [repriced, setRepriced] = useState(false);
+  if (menuSeen !== menu) {
+    setMenuSeen(menu);
+    const next = repriceCart(cart, menu);
+    if (next !== cart) {
+      setCart(next);
+      setPayRef(null);
+      setRepriced(true);
+    }
+  }
+
   /* ------------------------------ κατάλογος ------------------------------ */
   const unavailable = useMemo(() => new Set(snap.unavailableIds), [snap.unavailableIds]);
   const frequent = useMemo<Shown[]>(() => {
@@ -152,10 +190,25 @@ export function TillScreen({
   const discountCents = discount ? Math.min(discount.cents, subtotal) : 0;
   const total = subtotal - discountCents;
 
+  // Άδειασε το καλάθι (π.χ. αφαίρεση γραμμής-γραμμής): ο επόμενος πελάτης ξεκινά καθαρά, χωρίς έκπτωση/βομβητή/όνομα.
+  const [prevCount, setPrevCount] = useState(cart.length);
+  if (prevCount !== cart.length) {
+    setPrevCount(cart.length);
+    if (prevCount > 0 && cart.length === 0) {
+      setDiscount(null);
+      setBuzzer("");
+      setCustomerName("");
+      setPayRef(null);
+      setRepriced(false);
+      setView("cart");
+    }
+  }
+
   /** Κάθε αλλαγή στην πώληση ακυρώνει το κλειδί της: νέο περιεχόμενο = νέα πώληση. */
   const changeCart = (fn: (prev: UiLine[]) => UiLine[]) => {
     setCart(fn);
     setPayRef(null);
+    setRepriced(false);
   };
   const tapProduct = (p: MenuProduct) => {
     if (unavailable.has(p.id)) return;
@@ -189,21 +242,32 @@ export function TillScreen({
   /** ΜΙΑ κλήση στον server ανά πώληση. Το ref μπλοκάρει το διπλό πάτημα· το clientRef κάνει την επανάληψη ακίνδυνη. */
   const confirmSale = async (tender: TenderInput) => {
     const shift = snap.shift;
-    if (submitting.current || !cart.length || !shift || !payRef) return;
+    if (submitting.current) return;
+    if (!cart.length) return toast("Το καλάθι είναι άδειο", "danger");
+    if (!shift) return toast("Η βάρδια του ταμείου έκλεισε. Άνοιξε νέα βάρδια.", "danger");
+    // Το καλάθι άλλαξε όσο ήταν ανοιχτή η πληρωμή: νέα πώληση, νέο κλειδί (το ίδιο κρατιέται για κάθε επανάληψη).
+    let ref = payRef;
+    if (!ref) {
+      ref = newClientRef();
+      setPayRef(ref);
+    }
     submitting.current = true;
     setPending(true);
     try {
       const r = await quickSaleAction({
         cashSessionId: shift.id,
-        clientRef: payRef,
+        clientRef: ref,
         buzzerNo: buzzer ? Number(buzzer) : null,
         customerName: customerName.trim() || null,
         lines: toCartLines(cart),
         discount: discountCents > 0 && discount ? { cents: discountCents, reason: discount.reason } : null,
         tender,
+        expectedTotalCents: total,
       });
       if (!r.ok) {
         toast(r.error, "danger");
+        // Π.χ. άλλαξαν τιμές: ο έλεγχος φέρνει το νέο αποτύπωμα καταλόγου και το μενού ξαναφορτώνεται.
+        refreshSoon();
         return;
       }
       setLastSale(r.data);
@@ -520,11 +584,22 @@ export function TillScreen({
               </div>
 
               <div className="p-3 border-t border-line space-y-2" style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}>
+                {repriced && (
+                  <p className="rounded-xl bg-warn-soft text-warn px-3 py-2 text-sm font-medium" role="status" data-testid="cart-repriced">
+                    Άλλαξαν τιμές στο μενού: το καλάθι ενημερώθηκε με τις νέες τιμές.
+                  </p>
+                )}
+                {discountCents > 0 && (
+                  <div className="flex items-center justify-between text-sm text-warn" data-testid="cart-discount">
+                    <span>Έκπτωση · {discount?.reason}</span>
+                    <Money cents={-discountCents} />
+                  </div>
+                )}
                 <div className="flex items-center justify-between">
                   <span className="text-ink-2">
                     Σύνολο · <span className="num">{count}</span> {count === 1 ? "είδος" : "είδη"}
                   </span>
-                  <Money cents={subtotal} className="font-black text-2xl" />
+                  <Money cents={total} className="font-black text-2xl" />
                 </div>
                 <div className="flex gap-2">
                   {cart.length > 0 && (
@@ -533,7 +608,7 @@ export function TillScreen({
                     </button>
                   )}
                   <button type="button" className="btn-primary btn-lg flex-1 px-3!" disabled={!cart.length} onClick={() => goPay(false)}>
-                    Πληρωμή {cart.length ? formatEuro(subtotal) : ""}
+                    Πληρωμή {cart.length ? formatEuro(total) : ""}
                   </button>
                 </div>
               </div>
@@ -548,12 +623,12 @@ export function TillScreen({
           type="button"
           className={`${cart.length ? "btn-primary" : "btn-secondary"} w-full`}
           onClick={() => setSheetOpen(true)}
-          aria-label={`Καλάθι, ${count} ${count === 1 ? "είδος" : "είδη"}, ${formatEuro(subtotal)}`}
+          aria-label={`Καλάθι, ${count} ${count === 1 ? "είδος" : "είδη"}, ${formatEuro(total)}`}
         >
           <span className="flex-1 text-left">
             Καλάθι · <span className="num">{count}</span>
           </span>
-          <span className="num">{formatEuro(subtotal)}</span>
+          <span className="num">{formatEuro(total)}</span>
         </button>
       </div>
 

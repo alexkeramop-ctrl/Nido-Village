@@ -146,6 +146,7 @@ export async function quickSaleAction(input: QuickSaleInput): Promise<ActionResu
         lines: cleanLines(input?.lines),
         discount: cleanDiscount(input?.discount),
         tender: cleanTender(input?.tender),
+        expectedTotalCents: Number.isInteger(input?.expectedTotalCents) && Number(input.expectedTotalCents) >= 0 ? Number(input.expectedTotalCents) : null,
       },
       user,
       { deferFiscal: true },

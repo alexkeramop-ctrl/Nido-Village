@@ -35,6 +35,8 @@ export type QuickSaleInput = {
   notes?: string | null;
   discount?: SaleDiscount | null;
   tender: TenderInput;
+  /** Το σύνολο που έβλεπε ο ταμίας. Αν διαφέρει από τις τρέχουσες τιμές, η πώληση απορρίπτεται με σαφές μήνυμα. */
+  expectedTotalCents?: number | null;
 };
 
 export type SaleResult = {
@@ -169,6 +171,15 @@ export async function quickSale(input: QuickSaleInput, employee: TillEmployee, o
     wanted,
     [],
   );
+  // Άλλαξαν τιμές στο μενού όσο ήταν ανοιχτό το ταμείο: σαφές μήνυμα αντί για «τα ποσά δεν συμφωνούν».
+  // (Αν η πώληση έχει ήδη καταχωρηθεί με αυτό το κλειδί, επιστρέφεται εκείνη.)
+  if (input.expectedTotalCents != null && Math.round(input.expectedTotalCents) !== totals.totalCents) {
+    const already = await saleByClientRef(db, clientRef);
+    if (already) return already;
+    throw new Error(
+      `Άλλαξαν οι τιμές στο μενού: το σωστό σύνολο είναι ${(totals.totalCents / 100).toFixed(2).replace(".", ",")} €. Το ταμείο ενημερώθηκε· έλεγξε το καλάθι και ξαναπάτησε «Ολοκλήρωση».`,
+    );
+  }
   const plan = planTender(totals.totalCents, input.tender);
   const now = new Date();
 
@@ -486,20 +497,52 @@ export async function topProducts(limit = 12, days = 30): Promise<number[]> {
 }
 
 /** Ό,τι ανανεώνει το ταμείο στο παρασκήνιο, χωρίς να ξαναφορτώνει τη σελίδα (και τον κατάλογο). */
+/** FNV-1a 32-bit: μικρό, σταθερό αποτύπωμα κειμένου (όχι για ασφάλεια). */
+function fnv1a(text: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, "0");
+}
+
+/**
+ * Αποτύπωμα του καταλόγου (τιμές, ονόματα, ενεργά είδη, επιλογές, κατηγορίες). Αλλάζει όταν αλλάξει οτιδήποτε από αυτά.
+ * Στο Cloudflare δεν υπάρχουν ζωντανά μηνύματα (μόνο έλεγχος ανά 15″): με αυτό το ταμείο καταλαβαίνει ότι πρέπει να
+ * ξαναφορτώσει το μενού, αντί να πουλά με παλιές τιμές.
+ */
+export async function catalogVersion(db: DbLike): Promise<string> {
+  const p = schema.products;
+  const m = schema.modifiers;
+  const g = schema.modifierGroups;
+  const pg = schema.productModifierGroups;
+  const c = schema.categories;
+  const [products, modifiers, groups, links, categories] = await Promise.all([
+    db.select({ id: p.id, n: p.name, pr: p.priceCents, a: p.active, c: p.categoryId, v: p.vatRateId, s: p.sort }).from(p).orderBy(asc(p.id)),
+    db.select({ id: m.id, n: m.name, d: m.priceDeltaCents, a: m.active, g: m.groupId, s: m.sort }).from(m).orderBy(asc(m.id)),
+    db.select({ id: g.id, n: g.name, mn: g.minSelect, mx: g.maxSelect, a: g.active }).from(g).orderBy(asc(g.id)),
+    db.select({ p: pg.productId, g: pg.groupId, s: pg.sort }).from(pg).orderBy(asc(pg.productId), asc(pg.groupId)),
+    db.select({ id: c.id, n: c.name, a: c.active, s: c.sort, col: c.color }).from(c).orderBy(asc(c.id)),
+  ]);
+  return fnv1a(JSON.stringify([products, modifiers, groups, links, categories]));
+}
+
 export async function tillSnapshot(registerId: number) {
   const db = await getDb();
-  const [pending, ready, shift, off, registers] = await Promise.all([
+  const [pending, ready, shift, off, registers, version] = await Promise.all([
     listPendingForTill(registerId),
     listReadyForPickup(),
     getOpenShift(registerId),
     db.select({ id: schema.products.id }).from(schema.products).where(and(eq(schema.products.active, true), eq(schema.products.available, false))),
     listRegisters(),
+    catalogVersion(db),
   ]);
   // Τι δέχονται από QR τα ΑΛΛΑ ανοιχτά ταμεία: για να φαίνεται ποιος χώρος μένει χωρίς ταμείο.
   const qrOthers = registers
     .filter((r) => r.id !== registerId && r.openShift)
     .map((r) => ({ registerName: r.name, qrAreaIds: r.openShift!.qrAreaIds, qrTakeaway: r.openShift!.qrTakeaway }));
-  return { pending, ready, shift: shift ? toShiftDto(await shiftSummary(shift.id)) : null, unavailableIds: off.map((p) => p.id), qrOthers };
+  return { pending, ready, shift: shift ? toShiftDto(await shiftSummary(shift.id)) : null, unavailableIds: off.map((p) => p.id), qrOthers, catalogVersion: version };
 }
 
 export type TillSnapshot = Awaited<ReturnType<typeof tillSnapshot>>;
