@@ -1,7 +1,7 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { Money, useToast } from "@/components/ui";
+import { Modal, Money, useToast } from "@/components/ui";
 import { useLive } from "@/components/live";
 import { DiscountModal } from "@/components/ops/discount-modal";
 import { ProductModal, type MenuProduct } from "@/components/ops/product-modal";
@@ -12,10 +12,11 @@ import type { TenderInput } from "@/lib/tender";
 import type { Menu } from "@/server/services/catalog";
 import type { ShiftDto } from "@/server/services/registers";
 import type { SaleResult, TillSnapshot } from "@/server/services/till";
-import { quickSaleAction, selectRegisterAction } from "./actions";
+import { quickSaleAction, selectRegisterAction, setShiftQrAction } from "./actions";
 import { OrdersSheet } from "./pending-list";
 import { PayPanel } from "./pay-panel";
 import { CloseShiftModal, ShiftReport } from "./shift-panels";
+import { QrAreasPicker, qrSummary, type QrArea, type QrChoice } from "./qr-areas";
 
 const TOP = "top" as const;
 const FREQUENT_COUNT = 12;
@@ -56,6 +57,7 @@ export function TillScreen({
   menu,
   frequentIds,
   initial,
+  areas,
 }: {
   register: { id: number; name: string };
   userName: string;
@@ -63,6 +65,7 @@ export function TillScreen({
   menu: Menu;
   frequentIds: number[];
   initial: TillSnapshot;
+  areas: QrArea[];
 }) {
   const router = useRouter();
   const { toast, element } = useToast();
@@ -85,6 +88,8 @@ export function TillScreen({
   const [closeOpen, setCloseOpen] = useState(false);
   const [discountOpen, setDiscountOpen] = useState(false);
   const [closed, setClosed] = useState<ShiftDto | null>(null);
+  const [qrEdit, setQrEdit] = useState<QrChoice | null>(null);
+  const [qrSaving, setQrSaving] = useState(false);
   const submitting = useRef(false);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -252,6 +257,20 @@ export function TillScreen({
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-1.5 ml-auto">
+          {areas.length > 0 && (
+            <button
+              type="button"
+              data-testid="qr-areas-chip"
+              className="btn btn-sm border bg-white/70 text-ink border-line max-w-[16rem]"
+              title="Από ποιους χώρους δέχεται παραγγελίες QR αυτό το ταμείο"
+              onClick={() => {
+                void refresh();
+                setQrEdit({ areaIds: shift.qrAreaIds ?? areas.map((a) => a.id), takeaway: shift.qrTakeaway });
+              }}
+            >
+              <span className="truncate">QR: {qrSummary(areas, shift.qrAreaIds, shift.qrTakeaway)}</span>
+            </button>
+          )}
           <button type="button" className={`btn btn-sm border ${pendingCount ? "bg-warn-soft text-warn border-warn/40" : "bg-white/70 text-ink border-line"}`} onClick={() => setOrdersOpen(true)}>
             Προς πληρωμή ({pendingCount})
           </button>
@@ -596,6 +615,41 @@ export function TillScreen({
             setClosed(final);
           }}
         />
+      )}
+      {qrEdit && (
+        <Modal open onClose={() => !qrSaving && setQrEdit(null)} title={`Παραγγελίες QR · ${register.name}`}>
+          <div className="space-y-4">
+            <QrAreasPicker areas={areas} value={qrEdit} onChange={setQrEdit} others={snap.qrOthers} disabled={qrSaving} />
+            <div className="flex gap-2">
+              <button type="button" className="btn-secondary flex-1" disabled={qrSaving} onClick={() => setQrEdit(null)}>
+                Άκυρο
+              </button>
+              <button
+                type="button"
+                className="btn-primary flex-1"
+                data-testid="qr-areas-save"
+                disabled={qrSaving}
+                onClick={async () => {
+                  setQrSaving(true);
+                  try {
+                    const r = await setShiftQrAction(shift.id, qrEdit);
+                    if (!r.ok) return toast(r.error, "danger");
+                    setSnap((cur) => (cur.shift ? { ...cur, shift: { ...cur.shift, qrAreaIds: r.data.areaIds, qrTakeaway: r.data.takeaway } } : cur));
+                    setQrEdit(null);
+                    toast(`QR: ${qrSummary(areas, r.data.areaIds, r.data.takeaway)}`);
+                    void refresh();
+                  } catch {
+                    toast("Δεν αποθηκεύτηκε. Έλεγξε τη σύνδεση.", "danger");
+                  } finally {
+                    setQrSaving(false);
+                  }
+                }}
+              >
+                {qrSaving ? "Αποθήκευση…" : "Αποθήκευση"}
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
       {element}
     </div>

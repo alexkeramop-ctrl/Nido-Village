@@ -20,6 +20,8 @@ Build με OpenNext (`@opennextjs/cloudflare`). Η βάση είναι η Supaba
    (Μην το αλλάξετε αργότερα: χαλάνε τα PIN και οι συνδέσεις.)
    Επίσης Secret `NIDO_ADMIN_PIN` = το PIN του διαχειριστή (4–8 ψηφία). Τότε τα γνωστά demo PIN (1234, 1111, …) δεν
    δουλεύουν: οι υπόλοιποι demo υπάλληλοι παίρνουν τυχαία PIN (φαίνονται στο /admin/staff) και δεν φτιάχνεται demo συνεταίρος.
+   Προαιρετικό Secret `ANTHROPIC_API_KEY` (κλειδί από console.anthropic.com): ενεργοποιεί την «Ανάγνωση τιμολογίου» στην
+   Αποθήκη › Παραλαβή. Χωρίς αυτό το κουμπί μένει ανενεργό και η παραλαβή γίνεται χειροκίνητα.
 6. Re-deploy. Το `pda.nidovillage.gr` (route `custom_domain` στο wrangler.jsonc) στήνεται αυτόματα.
 7. Έλεγχος: `https://pda.nidovillage.gr/api/health` → `{"ok":true}`.
 

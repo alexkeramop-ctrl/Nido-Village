@@ -6,6 +6,7 @@ import { Badge, Field, Modal, Money, Numpad, useToast } from "@/components/ui";
 import { fmtDateTime, fmtTime, inputToCents } from "@/components/ops/labels";
 import type { ShiftDto } from "@/server/services/registers";
 import { closeShiftAction, openShiftAction, selectRegisterAction } from "./actions";
+import { QrAreasPicker, type QrArea, type QrChoice, type QrOther } from "./qr-areas";
 
 export type RegisterDto = { id: number; name: string; openShift: { openedAt: string; openedBy: string } | null };
 
@@ -80,15 +81,28 @@ export function RegisterPicker({ registers, isAdmin }: { registers: RegisterDto[
 
 /* ------------------------------ Άνοιγμα βάρδιας ------------------------------ */
 
-export function OpenShiftPanel({ register, canSwitch }: { register: { id: number; name: string }; canSwitch: boolean }) {
+export function OpenShiftPanel({
+  register,
+  canSwitch,
+  areas,
+  defaultQr,
+  qrOthers,
+}: {
+  register: { id: number; name: string };
+  canSwitch: boolean;
+  areas: QrArea[];
+  defaultQr: QrChoice;
+  qrOthers: QrOther[];
+}) {
   const { toast, element } = useToast();
   const [pending, start] = useTransition();
   const [value, setValue] = useState("");
+  const [qr, setQr] = useState<QrChoice>(defaultQr);
   const cents = value.trim() ? inputToCents(value) : 0;
   const open = () => {
     if (cents === null) return toast("Μη έγκυρο ποσό", "danger");
     start(async () => {
-      const r = await openShiftAction(register.id, cents);
+      const r = await openShiftAction(register.id, cents, qr);
       if (!r.ok) toast(r.error, "danger");
     });
   };
@@ -120,6 +134,7 @@ export function OpenShiftPanel({ register, canSwitch }: { register: { id: number
             }}
           />
         </Field>
+        {areas.length > 0 && <QrAreasPicker areas={areas} value={qr} onChange={setQr} others={qrOthers} disabled={pending} />}
         <Numpad value={value} onChange={setValue} onSubmit={open} mode="amount" maxLength={8} submitLabel={pending ? "Άνοιγμα…" : `Άνοιγμα βάρδιας · ${register.name}`} disabled={pending} />
         {canSwitch && (
           <button type="button" className="btn-ghost w-full btn-sm" onClick={change} disabled={pending}>

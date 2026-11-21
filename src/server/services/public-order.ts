@@ -47,6 +47,8 @@ async function nextPickupCode(): Promise<string> {
 }
 
 export type QrOrderInput = {
+  /** Το τραπέζι του QR (από το ?t= του συνδέσμου). null/χωρίς = παραγγελία για πακέτο. */
+  tableId?: number | null;
   customerName: string;
   customerPhone?: string | null;
   notes?: string | null;
@@ -64,10 +66,21 @@ export async function placeQrOrder(input: QrOrderInput) {
   if (lines.some((l) => l.qty > MAX_QTY)) throw new Error(`Έως ${MAX_QTY} τεμάχια ανά είδος`);
 
   const db = await getDb();
+  const table = input.tableId ? await getQrTable(input.tableId) : null;
+  if (input.tableId && !table) throw new Error("Το τραπέζι του QR δεν βρέθηκε. Σκάναρε ξανά το QR του τραπεζιού.");
   const employeeId = await getQrEmployeeId();
   const code = await nextPickupCode();
   const token = randomBytes(18).toString("base64url");
-  const session = await openSession({ orderType: "takeaway", label: `#${code} ${name}` }, employeeId);
+  // Κάθε παραγγελία QR είναι δικός της λογαριασμός (ακόμη κι από το ίδιο τραπέζι): άλλος πελάτης, άλλη πληρωμή.
+  // Με τραπέζι τα ροφήματα τυπώνονται στο μπαρ του χώρου του και η παραγγελία πάει στο ταμείο που έχει αναλάβει τον χώρο.
+  const session = table
+    ? (
+        await db
+          .insert(schema.tableSessions)
+          .values({ tableId: table.id, orderType: "dine_in", label: `#${code} ${name}`, openedBy: employeeId })
+          .returning()
+      )[0]
+    : await openSession({ orderType: "takeaway", label: `#${code} ${name}` }, employeeId);
   await db
     .update(schema.tableSessions)
     .set({ source: "qr", publicToken: token, pickupCode: code, customerName: name, customerPhone: phone || null })
@@ -86,6 +99,15 @@ export async function placeQrOrder(input: QrOrderInput) {
     throw e;
   }
   return { sessionId: session.id, token, code };
+}
+
+/** Το τραπέζι ενός QR, μόνο αν είναι ενεργό και ο χώρος του ενεργός. */
+export async function getQrTable(tableId: number) {
+  if (!Number.isInteger(tableId) || tableId <= 0) return null;
+  const db = await getDb();
+  const t = await db.query.tables.findFirst({ where: eq(schema.tables.id, tableId), with: { area: true } });
+  if (!t || !t.active || !t.area?.active) return null;
+  return { id: t.id, name: t.name, areaId: t.areaId, areaName: t.area.name };
 }
 
 export type PublicOrderStatus = "received" | "preparing" | "ready" | "picked_up" | "done" | "cancelled";

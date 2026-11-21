@@ -94,6 +94,8 @@ export function OrdersSheet({
                       </span>
                       <span className="mt-1.5 flex flex-wrap gap-1.5">
                         {o.qr ? <Badge tone="brand">QR</Badge> : <Badge>Λογαριασμός</Badge>}
+                        {o.areaName && <Badge>{o.areaName}</Badge>}
+                        {o.unassigned && <Badge tone="warn">Χωρίς ταμείο</Badge>}
                         {o.ready && <Badge tone="ok">Έτοιμη</Badge>}
                         {o.partial && <Badge tone="warn">Μερική πληρωμή</Badge>}
                       </span>
@@ -183,6 +185,8 @@ function PayOrder({
         <div className="flex flex-wrap items-center gap-1.5">
           {order.qr ? <Badge tone="brand">QR{order.code ? ` #${order.code}` : ""}</Badge> : <Badge>Λογαριασμός</Badge>}
           {order.customerName && <span className="font-semibold">{order.customerName}</span>}
+          {order.areaName && <Badge>{order.areaName}</Badge>}
+          {order.unassigned && <Badge tone="warn">Χωρίς ταμείο</Badge>}
           <span className="text-xs text-ink-3 num">{fmtTime(order.openedAt)}</span>
           {order.ready && <Badge tone="ok">Έτοιμη</Badge>}
         </div>

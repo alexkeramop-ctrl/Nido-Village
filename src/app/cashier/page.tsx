@@ -3,6 +3,7 @@ import { hasRole } from "@/server/auth";
 import { getMenu } from "@/server/services/catalog";
 import { deviceRegister } from "@/server/services/device-register";
 import { tillSnapshot, topProducts } from "@/server/services/till";
+import { listAreas } from "@/server/services/floor";
 import { Shell } from "@/components/shell";
 import { OpenShiftPanel, RegisterPicker } from "./shift-panels";
 import { TillScreen } from "./till-screen";
@@ -26,10 +27,16 @@ export default async function CashierPage() {
       </Shell>
     );
   }
+  const areas = (await listAreas()).map((a) => ({ id: a.id, name: a.name }));
   if (!register.openShift) {
+    // Προεπιλογή QR: ο χώρος του ταμείου (αν έχει) αλλιώς όλοι οι χώροι, και τα πακέτα.
+    const defaultQr = { areaIds: register.areaId && areas.some((a) => a.id === register.areaId) ? [register.areaId] : areas.map((a) => a.id), takeaway: true };
+    const qrOthers = registers
+      .filter((r) => r.id !== register.id && r.openShift)
+      .map((r) => ({ registerName: r.name, qrAreaIds: r.openShift!.qrAreaIds, qrTakeaway: r.openShift!.qrTakeaway }));
     return (
       <Shell user={user} active="/cashier" title="Ταμείο">
-        <OpenShiftPanel key={register.id} register={{ id: register.id, name: register.name }} canSwitch={registers.length > 1} />
+        <OpenShiftPanel key={register.id} register={{ id: register.id, name: register.name }} canSwitch={registers.length > 1} areas={areas} defaultQr={defaultQr} qrOthers={qrOthers} />
       </Shell>
     );
   }
@@ -44,6 +51,7 @@ export default async function CashierPage() {
         menu={menu}
         frequentIds={frequentIds}
         initial={snapshot}
+        areas={areas}
       />
     </Shell>
   );

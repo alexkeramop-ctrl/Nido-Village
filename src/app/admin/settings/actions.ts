@@ -27,10 +27,11 @@ export async function saveSettingsAction(input: { venueName: string; vatNumber: 
   });
 }
 
-export async function saveRegisterAction(input: { id?: number; name: string; sort?: number; active: boolean }) {
+export async function saveRegisterAction(input: { id?: number; name: string; sort?: number; active: boolean; areaId?: number | null }) {
   return run(async () => {
     const user = await requireRole("admin");
-    await upsertRegister({ id: input.id, name: String(input.name ?? ""), sort: Number.isFinite(input.sort) ? input.sort : undefined, active: !!input.active }, user.id);
+    const areaId = input.areaId === undefined ? undefined : Number.isInteger(input.areaId) && Number(input.areaId) > 0 ? Number(input.areaId) : null;
+    await upsertRegister({ id: input.id, name: String(input.name ?? ""), sort: Number.isFinite(input.sort) ? input.sort : undefined, active: !!input.active, areaId }, user.id);
     revalidatePath("/admin/settings");
     revalidatePath("/cashier");
   });

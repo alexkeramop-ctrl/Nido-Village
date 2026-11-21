@@ -67,7 +67,21 @@ function restoreCart(raw: unknown, menu: Menu): UiLine[] {
 
 type StoredCustomer = { name?: string; phone?: string };
 
-export function OrderClient({ menu, venueName, contact }: { menu: Menu; venueName: string; contact: VenueContact }) {
+export type QrTableInfo = { id: number; name: string; areaName: string };
+
+export function OrderClient({
+  menu,
+  venueName,
+  contact,
+  table = null,
+  tableMissing = false,
+}: {
+  menu: Menu;
+  venueName: string;
+  contact: VenueContact;
+  table?: QrTableInfo | null;
+  tableMissing?: boolean;
+}) {
   const { toast, element } = useToast();
   const [pending, start] = useTransition();
   // Το καλάθι ζει στο localStorage (null στον server -> άδειο καλάθι, ίδιο HTML σε server και client).
@@ -159,7 +173,7 @@ export function OrderClient({ menu, venueName, contact }: { menu: Menu; venueNam
       // οπότε καθαρίζουμε το καλάθι πριν την κλήση και το επαναφέρουμε μόνο αν η αποστολή αποτύχει.
       setStoredJson(CART_KEY, null);
       try {
-        const r = await placeQrOrderAction({ customerName: n, customerPhone: ph || null, notes: orderNotes.trim() || null, lines });
+        const r = await placeQrOrderAction({ tableId: table?.id ?? null, customerName: n, customerPhone: ph || null, notes: orderNotes.trim() || null, lines });
         if (r && !r.ok) {
           setStoredJson(CART_KEY, snapshot);
           toast(r.error, "danger");
@@ -180,10 +194,14 @@ export function OrderClient({ menu, venueName, contact }: { menu: Menu; venueNam
             <Mark height={44} />
             <div className="min-w-0">
               <div className="text-[11px] uppercase tracking-widest text-ink-3 font-semibold truncate">{venueName}</div>
-              <h1 className="text-xl font-bold leading-tight text-brand">Παραγγελία για παραλαβή</h1>
+              <h1 className="text-xl font-bold leading-tight text-brand">{table ? `Τραπέζι ${table.name}` : "Παραγγελία για παραλαβή"}</h1>
+              {table && <div className="text-xs font-semibold text-ink-2 truncate" data-testid="qr-table">{table.areaName}</div>}
             </div>
           </div>
           <p className="text-xs text-ink-2 mt-2">Παράγγειλε εδώ και πέρασε από το ταμείο να πληρώσεις και να πάρεις βομβητή.</p>
+          {tableMissing && (
+            <p className="text-xs font-semibold text-danger mt-1">Το τραπέζι του QR δεν βρέθηκε. Η παραγγελία θα γίνει για παραλαβή από το ταμείο.</p>
+          )}
         </header>
         {menu.length > 0 && (
           <nav aria-label="Κατηγορίες" className="bg-surface-2 border-b border-line">

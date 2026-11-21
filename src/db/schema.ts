@@ -358,6 +358,8 @@ export const registers = pgTable("registers", {
   name: text().notNull().unique(),
   sort: integer().notNull().default(0),
   active: boolean().notNull().default(true),
+  /** Ο χώρος που εξυπηρετεί το ταμείο: τα ροφήματα των πωλήσεών του τυπώνονται στο μπαρ αυτού του χώρου. */
+  areaId: integer().references(() => areas.id),
   createdAt: ts().notNull().defaultNow(),
 });
 
@@ -377,6 +379,10 @@ export const cashSessions = pgTable(
     countedCashCents: integer(),
     expectedCashCents: integer(),
     notes: text(),
+    /** Από ποιους χώρους δέχεται παραγγελίες QR αυτή η βάρδια (id χώρων). null = από όλους (παλιές βάρδιες). */
+    qrAreaIds: jsonb().$type<number[]>(),
+    /** Δέχεται και παραγγελίες QR χωρίς τραπέζι (πακέτο). */
+    qrTakeaway: boolean().notNull().default(true),
   },
   (t) => [
     index("cash_sessions_register_idx").on(t.registerId),
@@ -463,6 +469,25 @@ export const suppliers = pgTable("suppliers", {
   notes: text(),
   active: boolean().notNull().default(true),
 });
+
+/**
+ * Αντιστοίχιση γραμμής τιμολογίου προμηθευτή σε πρώτη ύλη, ώστε στο επόμενο τιμολόγιο να προτείνεται μόνη της.
+ * factor: πόσες μονάδες της πρώτης ύλης είναι 1 μονάδα του τιμολογίου (π.χ. 1 κιλό = 1000 γρ., 1 κιβώτιο = 24 τεμ.).
+ */
+export const invoiceItemAliases = pgTable(
+  "invoice_item_aliases",
+  {
+    id: serial().primaryKey(),
+    supplierId: integer().references(() => suppliers.id),
+    itemKey: text().notNull(),
+    ingredientId: integer()
+      .notNull()
+      .references(() => ingredients.id),
+    factor: numeric({ precision: 12, scale: 4 }).notNull().default("1"),
+    updatedAt: ts().notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("invoice_item_aliases_uq").on(t.supplierId, t.itemKey)],
+);
 
 export const ingredients = pgTable("ingredients", {
   id: serial().primaryKey(),

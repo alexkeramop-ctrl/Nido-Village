@@ -5,6 +5,7 @@ import { requireRole } from "@/server/auth";
 import { parseEuroToCents } from "@/server/money";
 import { adjustStock, deleteIngredient, deleteSupplier, receiveGoods, recordWaste, stockCount, upsertIngredient, upsertSupplier } from "@/server/services/inventory";
 import type { StockUnit } from "@/db/schema";
+import { receiveInvoice } from "@/server/services/invoice-receipt";
 
 const UNITS: StockUnit[] = ["g", "kg", "ml", "l", "pcs"];
 
@@ -95,6 +96,46 @@ export async function receiveGoodsAction(input: {
     const r = await receiveGoods({ supplierId: input.supplierId, docNumber: input.docNumber, docDate, notes: input.notes, lines }, user.id);
     revalidateStock();
     return { id: r.id, totalCents: r.totalCents };
+  });
+}
+
+/** Παραλαβή από τιμολόγιο που διαβάστηκε και ελέγχθηκε από τον χρήστη. */
+export async function receiveInvoiceAction(input: {
+  supplierId: number | null;
+  newSupplier: { name: string; vat: string | null } | null;
+  docNumber: string;
+  docDate: string;
+  notes: string;
+  allowDuplicate: boolean;
+  lines: { itemKey: string; ingredientId: number; quantity: number; unitPriceNet: number; factor: number; remember: boolean }[];
+}) {
+  return run(async () => {
+    const user = await requireRole("manager", "admin");
+    const docDate = input.docDate ? new Date(input.docDate + "T12:00:00") : new Date();
+    if (Number.isNaN(docDate.getTime())) throw new Error("Μη έγκυρη ημερομηνία");
+    const lines = (Array.isArray(input.lines) ? input.lines : []).slice(0, 200).map((l) => ({
+      itemKey: String(l?.itemKey ?? "").slice(0, 200),
+      ingredientId: Number(l?.ingredientId) || 0,
+      quantity: Number(l?.quantity),
+      unitPriceNet: Number(l?.unitPriceNet),
+      factor: Number(l?.factor),
+      remember: Boolean(l?.remember),
+    }));
+    const r = await receiveInvoice(
+      {
+        supplierId: Number(input.supplierId) > 0 ? Number(input.supplierId) : null,
+        newSupplier: input.newSupplier?.name ? { name: String(input.newSupplier.name), vat: input.newSupplier.vat ? String(input.newSupplier.vat) : null } : null,
+        docNumber: String(input.docNumber ?? ""),
+        docDate,
+        notes: String(input.notes ?? "").slice(0, 200),
+        allowDuplicate: Boolean(input.allowDuplicate),
+        lines,
+      },
+      user.id,
+    );
+    revalidateStock();
+    revalidatePath("/admin/costing");
+    return r;
   });
 }
 

@@ -22,7 +22,7 @@ describe("migration 0006_registers_buzzer", () => {
     const whens = journal.entries.map((e) => e.when);
     // Το drizzle εφαρμόζει ένα migration μόνο αν είναι νεότερο από το τελευταίο που έτρεξε.
     expect([...whens].sort((a, b) => a - b)).toEqual(whens);
-    expect(journal.entries.at(-1)?.tag).toBe("0006_registers_buzzer");
+    expect(journal.entries.map((e) => e.tag)).toContain("0006_registers_buzzer");
   });
 
   it("εφαρμόζεται πάνω σε βάση με υπάρχουσες βάρδιες, λογαριασμούς και πληρωμές χωρίς να τις αλλάξει", async () => {
@@ -59,6 +59,47 @@ describe("migration 0006_registers_buzzer", () => {
     await expect(pg.exec("update cash_sessions set register_id = 1 where id = 3")).rejects.toThrow(/cash_sessions_open_register_uq/);
     await pg.exec("update table_sessions set client_ref = 'k1' where id = 1");
     await expect(pg.exec("update table_sessions set client_ref = 'k1' where id = 2")).rejects.toThrow(/unique/i);
+    await pg.close();
+  });
+});
+
+// Η 0007 (χώρος ταμείου, QR ανά χώρο στη βάρδια, αντιστοιχίες τιμολογίων) τρέχει κι αυτή σε βάση με δεδομένα.
+describe("migration 0007_registers_qr_areas_invoice_aliases", () => {
+  const FILE = "0007_registers_qr_areas_invoice_aliases.sql";
+  it("είναι μόνο προσθετική· στήλη NOT NULL μόνο με DEFAULT", () => {
+    const sql = readFileSync(`drizzle/${FILE}`, "utf8");
+    expect(sql.replace(/ON DELETE no action ON UPDATE no action/g, "")).not.toMatch(/\bDROP\b|\bDELETE\b|\bUPDATE\b|\bTRUNCATE\b|ALTER COLUMN|RENAME/i);
+    for (const stmt of statements(FILE)) {
+      expect(stmt).toMatch(/^(CREATE TABLE|ALTER TABLE "\w+" ADD (COLUMN|CONSTRAINT)|CREATE (UNIQUE )?INDEX)/);
+      if (/ADD COLUMN/.test(stmt) && /NOT NULL/.test(stmt)) expect(stmt).toMatch(/DEFAULT/);
+    }
+    const journal = JSON.parse(readFileSync("drizzle/meta/_journal.json", "utf8")) as { entries: { tag: string }[] };
+    expect(journal.entries.at(-1)?.tag).toBe("0007_registers_qr_areas_invoice_aliases");
+  });
+
+  it("οι ανοιχτές βάρδιες δέχονται όλους τους χώρους και τα πακέτα (όπως πριν) και τα ταμεία μένουν χωρίς χώρο", async () => {
+    const pg = new PGlite();
+    for (const f of [
+      "0000_init.sql",
+      "0001_cloud.sql",
+      "0002_floor_qr.sql",
+      "0003_staff_bars_packs_events.sql",
+      "0004_finance_parties.sql",
+      "0005_floor_plan.sql",
+      "0006_registers_buzzer.sql",
+    ]) {
+      for (const stmt of statements(f)) await pg.exec(stmt);
+    }
+    await pg.exec(`
+      insert into employees (name, role, pin_hash) values ('Ταμίας', 'cashier', 'x');
+      insert into registers (name) values ('Ταμείο 1'), ('Ταμείο 2');
+      insert into cash_sessions (register_id, opened_by, opening_float_cents) values (1, 1, 1000);
+    `);
+    for (const stmt of statements(FILE)) await pg.exec(stmt);
+    const shifts = await pg.query<{ qr_area_ids: unknown; qr_takeaway: boolean }>("select qr_area_ids, qr_takeaway from cash_sessions");
+    expect(shifts.rows).toEqual([{ qr_area_ids: null, qr_takeaway: true }]);
+    const regs = await pg.query<{ area_id: number | null }>("select area_id from registers order by id");
+    expect(regs.rows).toEqual([{ area_id: null }, { area_id: null }]);
     await pg.close();
   });
 });

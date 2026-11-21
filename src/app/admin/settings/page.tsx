@@ -6,6 +6,8 @@ import { publisherStatus } from "@/server/cloud/publisher";
 import { listVatRates } from "@/server/services/catalog";
 import { getSettings } from "@/server/services/settings";
 import { listRegisters } from "@/server/services/registers";
+import { listAreas } from "@/server/services/floor";
+import { listStations } from "@/server/services/printers";
 import { RegistersTable } from "./registers-table";
 import { SettingsForm } from "./settings-form";
 import { VatTable } from "./vat-table";
@@ -14,7 +16,9 @@ export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   await requirePageUser("admin");
-  const [settings, vatRates, registers] = await Promise.all([getSettings(), listVatRates(), listRegisters(true)]);
+  const [settings, vatRates, registers, areas, stations] = await Promise.all([getSettings(), listVatRates(), listRegisters(true), listAreas(), listStations()]);
+  const stationName = new Map(stations.map((st) => [st.id, st.name]));
+  const areaOptions = areas.map((a) => ({ id: a.id, name: a.name, barName: a.barStationId ? (stationName.get(a.barStationId) ?? null) : null }));
   const cloud = publisherStatus();
   const mode = process.env.NIDO_MODE === "cloud" ? "cloud" : "store";
   return (
@@ -22,7 +26,10 @@ export default async function SettingsPage() {
       <PageHeader title="Ρυθμίσεις" subtitle="Στοιχεία καταστήματος, ταμεία, συντελεστές ΦΠΑ, σύνδεση cloud και φορολογικά." />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
         <SettingsForm settings={settings} />
-        <RegistersTable registers={registers.map((r) => ({ id: r.id, name: r.name, sort: r.sort, active: r.active, openShift: r.openShift !== null }))} />
+        <RegistersTable
+          registers={registers.map((r) => ({ id: r.id, name: r.name, sort: r.sort, active: r.active, openShift: r.openShift !== null, areaId: r.areaId, areaName: r.areaName }))}
+          areas={areaOptions}
+        />
         <VatTable rates={vatRates.map((v) => ({ id: v.id, name: v.name, ratePct: Number(v.ratePct), mydataCategory: v.mydataCategory, active: v.active }))} />
         <Section title="Σύνδεση cloud">
           <div className="space-y-3 text-sm">

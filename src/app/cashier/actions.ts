@@ -10,7 +10,7 @@ import type { TenderInput } from "@/lib/tender";
 import { addPayment, applyDiscount, printBill } from "@/server/services/billing";
 import type { CartLine } from "@/server/services/ordering";
 import { markPickedUp } from "@/server/services/public-order";
-import { closeRegisterShift, listRegisters, openRegisterShift, toShiftDto, type ShiftDto } from "@/server/services/registers";
+import { closeRegisterShift, listRegisters, openRegisterShift, setShiftQr, toShiftDto, type ShiftDto, type ShiftQr } from "@/server/services/registers";
 import { payOrderAtTill, quickSale, type PayOrderInput, type QuickSaleInput, type SaleDiscount, type SaleResult } from "@/server/services/till";
 
 const ROLES: EmployeeRole[] = ["cashier", "manager", "admin"];
@@ -57,12 +57,28 @@ export async function selectRegisterAction(registerId: number | null): Promise<A
   });
 }
 
-export async function openShiftAction(registerId: number, openingFloatCents: number): Promise<ActionResult<{ id: number }>> {
+/** Μόνο τα πεδία που περιμένουμε από τον browser. */
+function cleanQrInput(qr: ShiftQr | null | undefined): ShiftQr | undefined {
+  if (!qr) return undefined;
+  return { areaIds: Array.isArray(qr.areaIds) ? qr.areaIds.slice(0, 50).map(Number) : [], takeaway: Boolean(qr.takeaway) };
+}
+
+export async function openShiftAction(registerId: number, openingFloatCents: number, qr?: ShiftQr | null): Promise<ActionResult<{ id: number }>> {
   return run(async () => {
     const user = await requireRole(...ROLES);
-    const row = await openRegisterShift(posInt(registerId), cents(openingFloatCents), user.id);
+    const row = await openRegisterShift(posInt(registerId), cents(openingFloatCents), user.id, cleanQrInput(qr));
     revalidatePath("/cashier");
     return { id: row.id };
+  });
+}
+
+/** Αλλαγή μέσα στη βάρδια: από ποιους χώρους δέχεται παραγγελίες QR αυτό το ταμείο. */
+export async function setShiftQrAction(cashSessionId: number, qr: ShiftQr): Promise<ActionResult<ShiftQr>> {
+  return run(async () => {
+    const user = await requireRole(...ROLES);
+    const clean = cleanQrInput(qr);
+    if (!clean) throw new Error("Δεν επιλέχθηκε τίποτα");
+    return setShiftQr(posInt(cashSessionId), clean, user.id);
   });
 }
 

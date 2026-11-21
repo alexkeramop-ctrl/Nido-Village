@@ -59,6 +59,9 @@ export function QrClient({ venueName, orderUrl, pickupUrl, qrDataUrl, orders }: 
         subtitle="Οι πελάτες σκανάρουν το QR, παραγγέλνουν από το κινητό τους και πληρώνουν στο ταμείο όταν παραλάβουν."
         actions={
           <>
+            <Link href="/admin/qr/tables" className="btn-secondary btn-sm" data-testid="table-qr-link">
+              QR τραπεζιών
+            </Link>
             <a href={qrDataUrl} download="nido-qr-order.png" className="btn-secondary btn-sm">
               Λήψη PNG
             </a>

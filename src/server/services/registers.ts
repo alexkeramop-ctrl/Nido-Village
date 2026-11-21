@@ -52,7 +52,10 @@ export type RegisterRow = {
   name: string;
   sort: number;
   active: boolean;
-  openShift: { id: number; openedAt: Date; openedBy: string; openingFloatCents: number } | null;
+  /** Ο χώρος του ταμείου: τα ροφήματα των πωλήσεών του τυπώνονται στο μπαρ αυτού του χώρου. */
+  areaId: number | null;
+  areaName: string | null;
+  openShift: { id: number; openedAt: Date; openedBy: string; openingFloatCents: number; qrAreaIds: number[] | null; qrTakeaway: boolean } | null;
 };
 
 async function queryRegisters(db: DbLike): Promise<RegisterRow[]> {
@@ -62,12 +65,17 @@ async function queryRegisters(db: DbLike): Promise<RegisterRow[]> {
       name: schema.registers.name,
       sort: schema.registers.sort,
       active: schema.registers.active,
+      areaId: schema.registers.areaId,
+      areaName: schema.areas.name,
       shiftId: schema.cashSessions.id,
       openedAt: schema.cashSessions.openedAt,
       openingFloatCents: schema.cashSessions.openingFloatCents,
+      qrAreaIds: schema.cashSessions.qrAreaIds,
+      qrTakeaway: schema.cashSessions.qrTakeaway,
       openedBy: schema.employees.name,
     })
     .from(schema.registers)
+    .leftJoin(schema.areas, eq(schema.areas.id, schema.registers.areaId))
     .leftJoin(schema.cashSessions, and(eq(schema.cashSessions.registerId, schema.registers.id), isNull(schema.cashSessions.closedAt)))
     .leftJoin(schema.employees, eq(schema.employees.id, schema.cashSessions.openedBy))
     .orderBy(asc(schema.registers.sort), asc(schema.registers.id));
@@ -76,7 +84,12 @@ async function queryRegisters(db: DbLike): Promise<RegisterRow[]> {
     name: r.name,
     sort: r.sort,
     active: r.active,
-    openShift: r.shiftId && r.openedAt ? { id: r.shiftId, openedAt: r.openedAt, openedBy: r.openedBy ?? "", openingFloatCents: r.openingFloatCents ?? 0 } : null,
+    areaId: r.areaId,
+    areaName: r.areaName,
+    openShift:
+      r.shiftId && r.openedAt
+        ? { id: r.shiftId, openedAt: r.openedAt, openedBy: r.openedBy ?? "", openingFloatCents: r.openingFloatCents ?? 0, qrAreaIds: r.qrAreaIds ?? null, qrTakeaway: r.qrTakeaway ?? true }
+        : null,
   }));
 }
 
@@ -91,7 +104,15 @@ export async function listRegisters(includeInactive = false): Promise<RegisterRo
   return includeInactive ? rows : rows.filter((r) => r.active);
 }
 
-export async function upsertRegister(input: { id?: number; name: string; sort?: number; active?: boolean }, employeeId: number) {
+/** Ελέγχει ότι ο χώρος υπάρχει και είναι ενεργός. null = χωρίς χώρο. */
+async function checkAreaId(db: DbLike, areaId: number | null | undefined): Promise<number | null> {
+  if (areaId === null || areaId === undefined) return null;
+  const area = await db.query.areas.findFirst({ where: eq(schema.areas.id, areaId) });
+  if (!area || !area.active) throw new Error("Ο χώρος δεν βρέθηκε ή είναι ανενεργός");
+  return area.id;
+}
+
+export async function upsertRegister(input: { id?: number; name: string; sort?: number; active?: boolean; areaId?: number | null }, employeeId: number) {
   const db = await getDb();
   const name = (input.name ?? "").trim().replace(/\s+/g, " ");
   if (!name) throw new Error("Απαιτείται όνομα ταμείου");
@@ -107,7 +128,8 @@ export async function upsertRegister(input: { id?: number; name: string; sort?: 
       if (!all.some((r) => r.id !== input.id && r.active)) throw new Error("Πρέπει να μείνει τουλάχιστον ένα ενεργό ταμείο");
     }
   }
-  const values = { name, sort: Math.round(input.sort ?? (input.id ? all.find((r) => r.id === input.id)!.sort : all.length + 1)), active };
+  const areaId = input.areaId === undefined ? (input.id ? (all.find((r) => r.id === input.id)?.areaId ?? null) : null) : await checkAreaId(db, input.areaId);
+  const values = { name, sort: Math.round(input.sort ?? (input.id ? all.find((r) => r.id === input.id)!.sort : all.length + 1)), active, areaId };
   try {
     const [row] = input.id
       ? await db.update(schema.registers).set(values).where(eq(schema.registers.id, input.id)).returning()
@@ -125,22 +147,54 @@ export async function getOpenShift(registerId: number) {
   return (await db.query.cashSessions.findFirst({ where: and(eq(schema.cashSessions.registerId, registerId), isNull(schema.cashSessions.closedAt)) })) ?? null;
 }
 
-/** Άνοιγμα βάρδιας σε ένα ταμείο με αρχικό ταμείο (ρέστα). */
-export async function openRegisterShift(registerId: number, openingFloatCents: number, employeeId: number) {
+export type ShiftQr = { areaIds: number[]; takeaway: boolean };
+
+/** Καθαρίζει την επιλογή «από ποιους χώρους δέχεται QR»: μόνο υπαρκτοί, ενεργοί χώροι, χωρίς διπλά. */
+async function cleanQr(db: DbLike, qr: ShiftQr): Promise<ShiftQr> {
+  const ids = [...new Set((qr.areaIds ?? []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+  if (ids.length) {
+    const found = await db.select({ id: schema.areas.id }).from(schema.areas).where(and(inArray(schema.areas.id, ids), eq(schema.areas.active, true)));
+    if (found.length !== ids.length) throw new Error("Κάποιος χώρος δεν βρέθηκε ή είναι ανενεργός. Ανανέωσε τη σελίδα.");
+  }
+  return { areaIds: ids.sort((a, b) => a - b), takeaway: !!qr.takeaway };
+}
+
+/**
+ * Άνοιγμα βάρδιας σε ένα ταμείο με αρχικό ταμείο (ρέστα) και τους χώρους από τους οποίους δέχεται παραγγελίες QR.
+ * Χωρίς επιλογή QR: ο χώρος του ταμείου (αν έχει), αλλιώς όλοι οι χώροι.
+ */
+export async function openRegisterShift(registerId: number, openingFloatCents: number, employeeId: number, qr?: ShiftQr) {
   const db = await getDb();
   const float = Math.round(Number(openingFloatCents));
   if (!Number.isFinite(float) || float < 0) throw new Error("Μη έγκυρο αρχικό ταμείο");
   const register = await db.query.registers.findFirst({ where: eq(schema.registers.id, registerId) });
   if (!register) throw new Error("Το ταμείο δεν βρέθηκε");
   if (!register.active) throw new Error(`Το «${register.name}» είναι απενεργοποιημένο`);
+  const q: { qrAreaIds: number[] | null; qrTakeaway: boolean } = qr
+    ? await cleanQr(db, qr).then((c) => ({ qrAreaIds: c.areaIds, qrTakeaway: c.takeaway }))
+    : { qrAreaIds: register.areaId ? [register.areaId] : null, qrTakeaway: true };
   try {
-    const [row] = await db.insert(schema.cashSessions).values({ registerId, openedBy: employeeId, openingFloatCents: float }).returning();
-    await audit(db, employeeId, "cash_open", "cash_session", row.id, { registerId, register: register.name, openingFloatCents: float });
+    const [row] = await db.insert(schema.cashSessions).values({ registerId, openedBy: employeeId, openingFloatCents: float, ...q }).returning();
+    await audit(db, employeeId, "cash_open", "cash_session", row.id, { registerId, register: register.name, openingFloatCents: float, ...q });
     return row;
   } catch (e) {
     if (isUniqueViolation(e)) throw new Error("Το ταμείο έχει ήδη ανοιχτή βάρδια");
     throw e;
   }
+}
+
+/** Αλλαγή, μέσα στη βάρδια, των χώρων από τους οποίους το ταμείο δέχεται παραγγελίες QR. */
+export async function setShiftQr(cashSessionId: number, qr: ShiftQr, employeeId: number) {
+  const db = await getDb();
+  const clean = await cleanQr(db, qr);
+  const [row] = await db
+    .update(schema.cashSessions)
+    .set({ qrAreaIds: clean.areaIds, qrTakeaway: clean.takeaway })
+    .where(and(eq(schema.cashSessions.id, cashSessionId), isNull(schema.cashSessions.closedAt)))
+    .returning({ id: schema.cashSessions.id });
+  if (!row) throw new Error("Η βάρδια έχει κλείσει");
+  await audit(db, employeeId, "cash_qr_areas", "cash_session", cashSessionId, { qrAreaIds: clean.areaIds, qrTakeaway: clean.takeaway });
+  return clean;
 }
 
 /* ------------------------------ Σύνοψη βάρδιας ------------------------------ */
@@ -166,6 +220,9 @@ export type ShiftSummary = {
   /** Μετρημένα − αναμενόμενα: θετικό = πλεόνασμα, αρνητικό = έλλειμμα. null όσο η βάρδια είναι ανοιχτή. */
   diffCents: number | null;
   notes: string | null;
+  /** Χώροι από τους οποίους η βάρδια δέχεται παραγγελίες QR. null = από όλους. */
+  qrAreaIds: number[] | null;
+  qrTakeaway: boolean;
 };
 
 export const LEGACY_REGISTER_NAME = "Παλιό ταμείο";
@@ -216,6 +273,8 @@ export async function shiftSummaries(db: DbLike, ids: number[]): Promise<ShiftSu
       countedCashCents: cs.countedCashCents,
       diffCents: cs.closedAt && cs.countedCashCents !== null ? cs.countedCashCents - expected : null,
       notes: cs.notes,
+      qrAreaIds: cs.qrAreaIds ?? null,
+      qrTakeaway: cs.qrTakeaway,
     };
   });
 }

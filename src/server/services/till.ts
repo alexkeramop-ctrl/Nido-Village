@@ -18,7 +18,7 @@ import { buzzerSlip } from "@/server/printing/templates";
 import { closeSessionTx, computeTotals, insertPaymentsTx, issueReceiptForSession, lineTotalCents } from "./billing";
 import { TILL_TYPE_LABEL, loadRoundContext, recordOrderSlip, resolveLines, sendRoundTx, type CartLine } from "./ordering";
 import { listReadyForPickup, statusOf } from "./public-order";
-import { getOpenShift, shiftSummary, toShiftDto } from "./registers";
+import { getOpenShift, listRegisters, shiftSummary, toShiftDto } from "./registers";
 import { athensDayStart, todayAthens } from "./reports";
 
 export type TillEmployee = { id: number; name: string; role: EmployeeRole };
@@ -66,6 +66,17 @@ function displayNoOf(s: { id: number; buzzerNo: number | null; pickupCode?: stri
   if (s.buzzerNo) return `Βομβητής ${s.buzzerNo}`;
   if (s.pickupCode) return `#${s.pickupCode}${s.customerName ? ` ${s.customerName}` : ""}`;
   return s.customerName || s.label || `#${s.id}`;
+}
+
+/** Το μπαρ του χώρου του ταμείου (εκεί τυπώνονται τα ροφήματα των πωλήσεών του). null = το μπαρ του είδους/κατηγορίας. */
+async function registerBarTx(tx: DbLike, registerId: number | null): Promise<number | null> {
+  if (!registerId) return null;
+  const [r] = await tx
+    .select({ bar: schema.areas.barStationId })
+    .from(schema.registers)
+    .leftJoin(schema.areas, eq(schema.areas.id, schema.registers.areaId))
+    .where(eq(schema.registers.id, registerId));
+  return r?.bar ?? null;
 }
 
 async function lockOpenShiftTx(tx: DbLike, cashSessionId: number) {
@@ -167,6 +178,7 @@ export async function quickSale(input: QuickSaleInput, employee: TillEmployee, o
       const existing = await saleByClientRef(tx, clientRef);
       if (existing) return { duplicate: existing };
       const shift = await lockOpenShiftTx(tx, input.cashSessionId);
+      const areaBarStationId = await registerBarTx(tx, shift.registerId);
       if (buzzerNo) await claimBuzzerTx(tx, buzzerNo, null, now);
       const [session] = await tx
         .insert(schema.tableSessions)
@@ -195,7 +207,8 @@ export async function quickSale(input: QuickSaleInput, employee: TillEmployee, o
         tableName,
         orderType: "takeaway",
         label: customerName,
-        areaBarStationId: null,
+        // Ροφήματα στο μπαρ του χώρου του ταμείου, φαγητά στην κουζίνα.
+        areaBarStationId,
         buzzerNo,
         customerName,
         typeLabel: TILL_TYPE_LABEL,
@@ -378,24 +391,55 @@ export type PendingOrder = {
   totalCents: number;
   paidCents: number;
   dueCents: number;
+  /** Ο χώρος του τραπεζιού για παραγγελίες QR από τραπέζι (null = πακέτο / χωρίς τραπέζι). */
+  areaName: string | null;
+  /** Κανένα ανοιχτό ταμείο δεν έχει αναλάβει τον χώρο της: φαίνεται σε όλα για να μη χαθεί. */
+  unassigned: boolean;
 };
 
-/** «Προς πληρωμή»: ό,τι περιμένει είσπραξη στο ταμείο. Πρώτα οι παραγγελίες QR, μετά τυχόν παλιοί ανοιχτοί λογαριασμοί. */
-export async function listPendingForTill(): Promise<PendingOrder[]> {
+export type QrShift = { cashSessionId: number; qrAreaIds: number[] | null; qrTakeaway: boolean };
+
+/**
+ * Ποια ανοιχτά ταμεία βλέπουν μια παραγγελία QR. Τραπέζι σε χώρο Α: όσα δέχονται τον Α (null = όλους).
+ * Χωρίς τραπέζι: όσα δέχονται πακέτο. Αν δεν τη δέχεται κανένα ανοιχτό ταμείο, τη βλέπουν όλα (unassigned).
+ */
+export function qrRouting(areaId: number | null, shifts: QrShift[]): { cashSessionIds: number[]; unassigned: boolean } {
+  const claim = shifts.filter((sh) => (areaId === null ? sh.qrTakeaway : sh.qrAreaIds === null || sh.qrAreaIds.includes(areaId)));
+  if (claim.length) return { cashSessionIds: claim.map((c) => c.cashSessionId), unassigned: false };
+  return { cashSessionIds: shifts.map((c) => c.cashSessionId), unassigned: true };
+}
+
+/**
+ * «Προς πληρωμή»: ό,τι περιμένει είσπραξη στο ταμείο. Πρώτα οι παραγγελίες QR, μετά τυχόν παλιοί ανοιχτοί λογαριασμοί.
+ * Με registerId: οι παραγγελίες QR φιλτράρονται με τους χώρους που δέχεται η ανοιχτή βάρδια αυτού του ταμείου.
+ */
+export async function listPendingForTill(registerId?: number): Promise<PendingOrder[]> {
   const db = await getDb();
-  const rows = await db.query.tableSessions.findMany({
-    where: inArray(schema.tableSessions.status, ["open", "billed"]),
-    orderBy: [asc(schema.tableSessions.openedAt)],
-    with: { table: true, items: { orderBy: [asc(schema.orderItems.id)], with: { modifiers: true } }, payments: true },
-  });
-  const out = rows.map((s): PendingOrder => {
+  const [rows, open] = await Promise.all([
+    db.query.tableSessions.findMany({
+      where: inArray(schema.tableSessions.status, ["open", "billed"]),
+      orderBy: [asc(schema.tableSessions.openedAt)],
+      with: { table: { with: { area: true } }, items: { orderBy: [asc(schema.orderItems.id)], with: { modifiers: true } }, payments: true },
+    }),
+    db
+      .select({ id: schema.cashSessions.id, registerId: schema.cashSessions.registerId, qrAreaIds: schema.cashSessions.qrAreaIds, qrTakeaway: schema.cashSessions.qrTakeaway })
+      .from(schema.cashSessions)
+      .where(isNull(schema.cashSessions.closedAt)),
+  ]);
+  const shifts: QrShift[] = open.map((o) => ({ cashSessionId: o.id, qrAreaIds: o.qrAreaIds ?? null, qrTakeaway: o.qrTakeaway }));
+  const mine = registerId ? open.find((o) => o.registerId === registerId)?.id ?? null : null;
+  const visible = rows
+    .map((s) => ({ s, route: s.source === "qr" ? qrRouting(s.table?.areaId ?? null, shifts) : null }))
+    .filter(({ route }) => mine === null || route === null || route.cashSessionIds.includes(mine));
+  const out = visible.map(({ s, route }): PendingOrder => {
     const totals = computeTotals(s.items, s.discountCents, s.payments);
     const live = s.items.filter((i) => i.status !== "voided");
     const status = statusOf(s);
     return {
       sessionId: s.id,
       qr: s.source === "qr",
-      name: s.table ? s.table.name : s.label ?? `#${s.id}`,
+      // QR από τραπέζι: «#004 Μαρία · Π3» ώστε να φαίνεται και ο πελάτης και το τραπέζι.
+      name: s.source === "qr" ? [s.label ?? `#${s.id}`, s.table?.name].filter(Boolean).join(" · ") : s.table ? s.table.name : s.label ?? `#${s.id}`,
       code: s.pickupCode,
       customerName: s.customerName,
       openedAt: s.openedAt.toISOString(),
@@ -408,6 +452,8 @@ export async function listPendingForTill(): Promise<PendingOrder[]> {
       totalCents: totals.totalCents,
       paidCents: totals.paidCents,
       dueCents: totals.dueCents,
+      areaName: s.table?.area?.name ?? null,
+      unassigned: route?.unassigned ?? false,
     };
   });
   return out.filter((o) => o.itemCount > 0 && o.dueCents > 0).sort((a, b) => Number(b.qr) - Number(a.qr) || a.openedAt.localeCompare(b.openedAt));
@@ -431,13 +477,18 @@ export async function topProducts(limit = 12, days = 30): Promise<number[]> {
 /** Ό,τι ανανεώνει το ταμείο στο παρασκήνιο, χωρίς να ξαναφορτώνει τη σελίδα (και τον κατάλογο). */
 export async function tillSnapshot(registerId: number) {
   const db = await getDb();
-  const [pending, ready, shift, off] = await Promise.all([
-    listPendingForTill(),
+  const [pending, ready, shift, off, registers] = await Promise.all([
+    listPendingForTill(registerId),
     listReadyForPickup(),
     getOpenShift(registerId),
     db.select({ id: schema.products.id }).from(schema.products).where(and(eq(schema.products.active, true), eq(schema.products.available, false))),
+    listRegisters(),
   ]);
-  return { pending, ready, shift: shift ? toShiftDto(await shiftSummary(shift.id)) : null, unavailableIds: off.map((p) => p.id) };
+  // Τι δέχονται από QR τα ΑΛΛΑ ανοιχτά ταμεία: για να φαίνεται ποιος χώρος μένει χωρίς ταμείο.
+  const qrOthers = registers
+    .filter((r) => r.id !== registerId && r.openShift)
+    .map((r) => ({ registerName: r.name, qrAreaIds: r.openShift!.qrAreaIds, qrTakeaway: r.openShift!.qrTakeaway }));
+  return { pending, ready, shift: shift ? toShiftDto(await shiftSummary(shift.id)) : null, unavailableIds: off.map((p) => p.id), qrOthers };
 }
 
 export type TillSnapshot = Awaited<ReturnType<typeof tillSnapshot>>;

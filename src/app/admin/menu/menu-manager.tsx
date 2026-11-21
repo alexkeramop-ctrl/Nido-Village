@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { Badge, EmptyState, Field, Money } from "@/components/ui";
 import { FormModal, PageHeader, Section, TableWrap, Toggle, formValues, useActionRunner } from "@/components/admin/common";
 import { centsToInput } from "@/components/admin/format";
-import { deleteCategoryAction, deleteProductAction, loadStarterMenuAction, saveCategoryAction, saveProductAction, setAvailabilityAction } from "./actions";
+import { deleteCategoryAction, deleteProductAction, loadKitchenMenuAction, loadStarterMenuAction, saveCategoryAction, saveProductAction, setAvailabilityAction } from "./actions";
 
 type Category = { id: number; name: string; sort: number; color: string; printStationId: number | null; stationName: string | null; active: boolean };
 type Product = {
@@ -131,6 +131,23 @@ export function MenuManager({
               }}
             >
               Φόρτωση βασικού μενού
+            </button>
+            <button
+              className="btn-secondary btn-sm"
+              disabled={pending}
+              data-testid="load-kitchen-menu"
+              title="Πίτσες, burgers, mini burgers, hot dog, σαλάτες, brunch, σνακ & σάντουιτς, vegan με ενδεικτικές τιμές"
+              onClick={() => {
+                if (
+                  !window.confirm(
+                    "Θα προστεθούν είδη κουζίνας (πίτσες, burgers, mini burgers, hot dog, σαλάτες, brunch, σνακ & σάντουιτς, vegan) με ΕΝΔΕΙΚΤΙΚΕΣ τιμές και επιλογή «με πατάτες». Τυπώνονται στην κουζίνα. Όσα υπάρχουν ήδη δεν αλλάζουν. Συνέχεια;",
+                  )
+                )
+                  return;
+                run(() => loadKitchenMenuAction(), { onSuccess: (r) => toast(r.products ? `Προστέθηκαν ${r.products} είδη κουζίνας. Έλεγξε τις τιμές!` : "Όλα τα είδη κουζίνας υπάρχουν ήδη.") });
+              }}
+            >
+              Φόρτωση μενού κουζίνας
             </button>
             <button className="btn-secondary btn-sm" onClick={() => setCatModal({ mode: "new" })}>
               + Νέα κατηγορία

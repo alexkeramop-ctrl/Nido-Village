@@ -80,6 +80,21 @@ export async function deleteProductAction(id: number) {
   });
 }
 
+/** Φορτώνει το μενού κουζίνας (πίτσες, burgers, brunch…) με ενδεικτικές τιμές (χωρίς διπλοεγγραφές). */
+export async function loadKitchenMenuAction() {
+  return run(async () => {
+    const me = await requireRole("manager", "admin");
+    const { loadKitchenMenu } = await import("@/db/starter-menu");
+    const { getDb } = await import("@/db");
+    const { audit } = await import("@/server/audit");
+    const r = await loadKitchenMenu();
+    await audit(await getDb(), me.id, "kitchen_menu", "catalog", null, r);
+    revalidatePath("/admin/menu");
+    revalidatePath("/admin/costing");
+    return r;
+  });
+}
+
 /** Φορτώνει το βασικό μενού μπαρ με ενδεικτικές τιμές (χωρίς διπλοεγγραφές). */
 export async function loadStarterMenuAction() {
   return run(async () => {

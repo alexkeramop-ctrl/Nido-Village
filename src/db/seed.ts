@@ -2,7 +2,7 @@
  * Δείγμα δεδομένων για το Nido Village. Τρέχει μόνο αν η βάση είναι άδεια.
  */
 import { randomInt } from "node:crypto";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { Db } from "./index";
 import * as schema from "./schema";
 import type { PlanRoom } from "@/lib/floor-plan";
@@ -372,7 +372,12 @@ export async function seedDemo(db: Db): Promise<boolean> {
     await db.insert(schema.partnerUsers).values({ name: "Συνεταίρος (demo)", email: "partner@nido.demo", passwordHash: hashPin("nido-demo-2026") });
   }
   // Ταμεία self-service: «Ταμείο 1» και «Ταμείο 2» (ο διαχειριστής προσθέτει/μετονομάζει από τις Ρυθμίσεις).
+  // Κάθε ταμείο εξυπηρετεί έναν χώρο: τα ροφήματά του τυπώνονται στο μπαρ εκείνου του χώρου.
   await ensureDefaultRegisters(db);
+  const regs = await db.select({ id: schema.registers.id }).from(schema.registers).orderBy(schema.registers.sort, schema.registers.id);
+  for (const [i, areaId] of [kentro.id, paidiki.id].entries()) {
+    if (regs[i]) await db.update(schema.registers).set({ areaId }).where(eq(schema.registers.id, regs[i].id));
+  }
   return true;
 }
 

@@ -406,6 +406,8 @@ export async function deleteIngredient(id: number, employeeId: number): Promise<
   const hasHistory = (m?.n ?? 0) > 0 || (g?.n ?? 0) > 0;
   await db.transaction(async (tx) => {
     await tx.delete(schema.recipeLines).where(eq(schema.recipeLines.ingredientId, id));
+    // Οι αντιστοιχίσεις τιμολογίων δείχνουν σε αυτή την πρώτη ύλη: χωρίς αυτήν δεν έχουν νόημα.
+    await tx.delete(schema.invoiceItemAliases).where(eq(schema.invoiceItemAliases.ingredientId, id));
     if (hasHistory) {
       await tx.update(schema.ingredients).set({ active: false, minQty: "0" }).where(eq(schema.ingredients.id, id));
     } else {
@@ -424,9 +426,11 @@ export async function deleteSupplier(id: number): Promise<"deleted" | "archived"
   const [r] = await db.select({ n: sql<number>`count(*)::int` }).from(schema.goodsReceipts).where(eq(schema.goodsReceipts.supplierId, id));
   await db.update(schema.ingredients).set({ supplierId: null }).where(eq(schema.ingredients.supplierId, id));
   if ((r?.n ?? 0) > 0) {
+    // Ο προμηθευτής μένει (ανενεργός), άρα και οι αντιστοιχίσεις των τιμολογίων του.
     await db.update(schema.suppliers).set({ active: false }).where(eq(schema.suppliers.id, id));
     return "archived";
   }
+  await db.delete(schema.invoiceItemAliases).where(eq(schema.invoiceItemAliases.supplierId, id));
   await db.delete(schema.suppliers).where(eq(schema.suppliers.id, id));
   return "deleted";
 }

@@ -50,6 +50,13 @@
       "when": 1794911321985,
       "tag": "0006_registers_buzzer",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795241672876,
+      "tag": "0007_registers_qr_areas_invoice_aliases",
+      "breakpoints": true
     }
   ]
 }

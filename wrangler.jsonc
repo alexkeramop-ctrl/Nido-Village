@@ -27,5 +27,5 @@
       "localConnectionString": "postgres://nido:nido@127.0.0.1:5432/nido"
     }
   ]
-  // Μυστικά (Settings → Variables and Secrets, τύπος Secret): NIDO_SECRET, NIDO_ADMIN_PIN.
+  // Μυστικά (Settings → Variables and Secrets, τύπος Secret): NIDO_SECRET, NIDO_ADMIN_PIN, ANTHROPIC_API_KEY (ανάγνωση τιμολογίων).
 }

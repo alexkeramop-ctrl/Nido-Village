@@ -14,6 +14,7 @@ import {
 import { addDays, athensDayStart, todayAthens } from "@/server/services/reports";
 import { StockTab } from "./stock-tab";
 import { ReceiveTab } from "./receive-tab";
+import { invoiceReaderEnabled } from "@/server/services/invoice-reader";
 import { CountTab } from "./count-tab";
 import { MovementsTab } from "./movements-tab";
 import { SuppliersTab } from "./suppliers-tab";
@@ -77,6 +78,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Pr
         ingredients={ingredients}
         suppliers={suppliers}
         today={today}
+        invoiceReader={invoiceReaderEnabled()}
         receipts={receipts.map((r) => ({
           id: r.id,
           supplierName: r.supplier?.name ?? null,

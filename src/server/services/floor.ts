@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, ne } from "drizzle-orm";
 import type { TableShape } from "@/db/schema";
 import { getDb, schema } from "@/db";
 import { emit } from "@/server/events";
@@ -112,12 +112,14 @@ export async function getFloor(): Promise<{ areas: FloorArea[]; takeaway: Takeaw
   };
   const byTable = new Map<number, ReturnType<typeof summarize>>();
   const takeaway: TakeawaySession[] = [];
+  const tableName = new Map(areas.flatMap((a) => a.tables.map((t) => [t.id, t.name] as const)));
   for (const s of open) {
-    if (s.tableId) byTable.set(s.tableId, summarize(s));
+    // Οι παραγγελίες QR από τραπέζι είναι ξεχωριστοί λογαριασμοί πελατών· δεν «πιάνουν» το τραπέζι στην κάτοψη.
+    if (s.tableId && s.source !== "qr") byTable.set(s.tableId, summarize(s));
     else
       takeaway.push({
         ...summarize(s),
-        label: s.label ?? `#${s.id}`,
+        label: [s.label ?? `#${s.id}`, s.tableId ? tableName.get(s.tableId) : null].filter(Boolean).join(" · "),
         orderType: s.orderType === "delivery" ? "delivery" : "takeaway",
       });
   }
@@ -216,10 +218,15 @@ export async function autoLayoutArea(areaId: number, force = false) {
   return positions.length;
 }
 
+/** Ο ανοιχτός λογαριασμός του τραπεζιού από το προσωπικό (οι παραγγελίες QR πελατών μένουν χωριστές). */
 export async function findOpenSessionForTable(tableId: number) {
   const db = await getDb();
   return db.query.tableSessions.findFirst({
-    where: and(eq(schema.tableSessions.tableId, tableId), inArray(schema.tableSessions.status, ["open", "billed"])),
+    where: and(
+      eq(schema.tableSessions.tableId, tableId),
+      inArray(schema.tableSessions.status, ["open", "billed"]),
+      ne(schema.tableSessions.source, "qr"),
+    ),
   });
 }
 

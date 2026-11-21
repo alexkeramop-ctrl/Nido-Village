@@ -5,6 +5,7 @@ import { Field, Money } from "@/components/ui";
 import { Section, TableWrap, useActionRunner } from "@/components/admin/common";
 import { euroToInput, fmtDateOnly, fmtQty, parseDecimal } from "@/components/admin/format";
 import { receiveGoodsAction } from "./actions";
+import { InvoiceImport } from "./invoice-import";
 import type { Ingredient, Supplier } from "./types";
 
 type Receipt = {
@@ -21,7 +22,19 @@ type Line = { key: number; ingredientId: number; qty: string; unitCost: string }
 let nextKey = 1;
 const newLine = (): Line => ({ key: nextKey++, ingredientId: 0, qty: "", unitCost: "" });
 
-export function ReceiveTab({ ingredients, suppliers, today, receipts }: { ingredients: Ingredient[]; suppliers: Supplier[]; today: string; receipts: Receipt[] }) {
+export function ReceiveTab({
+  ingredients,
+  suppliers,
+  today,
+  receipts,
+  invoiceReader,
+}: {
+  ingredients: Ingredient[];
+  suppliers: Supplier[];
+  today: string;
+  receipts: Receipt[];
+  invoiceReader: boolean;
+}) {
   const { run, pending, toastElement } = useActionRunner();
   const [supplierId, setSupplierId] = useState<string>("");
   const [docNumber, setDocNumber] = useState("");
@@ -65,7 +78,8 @@ export function ReceiveTab({ ingredients, suppliers, today, receipts }: { ingred
   return (
     <div className="space-y-4">
       {toastElement}
-      <Section title="Νέα παραλαβή">
+      <InvoiceImport enabled={invoiceReader} ingredients={ingredients} suppliers={suppliers} today={today} />
+      <Section title="Νέα παραλαβή (χειροκίνητα)">
         <form
           className="space-y-4"
           onSubmit={(e) => {
